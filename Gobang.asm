@@ -12,7 +12,8 @@ DATA SEGMENT
     S2 DB 0										;用于保存输入坐标值y
     TEMP DB 0                          	 								;单机时判断该下黑子还是白子
     ORDER DB 1                          								;双机时标志先手or后手，1表示先手，2表示后手
-    TI DB ' 1 2 3 4 5 6 7 8 9 A B C D E F',0AH,0DH,'$'						;棋盘的y坐标
+    MUSTYPE DB 1								;最终音乐类型
+	TI DB ' 1 2 3 4 5 6 7 8 9 A B C D E F',0AH,0DH,'$'						;棋盘的y坐标
     ERROR DB 'YOU CANNOT PUT HERE!',0AH,0DH,'$' 						;报错,"你不能放在这里"
     WRONG DB 0AH,0DH,'FALSE INPUT!',0AH,0DH,'$'						;错误信息的提示
     COLOR DB 0AH,0DH,'PLEASE CHOOSE YOUR CHESSMAN COLOR:(1 FOR BLACK, 2 FOR WHITE)',0AH,0DH,'$'	;选棋子的颜色，1是黑色，2是白色
@@ -24,19 +25,18 @@ DATA SEGMENT
     WAIT1 DB 'PLEASE WAIT...',0AH,0DH,'$'  							;进入等待信息提示 
     CHOOSE DB 'PLEASE CHOOSE GAME MODEL:(1 FOR ONE PLAYER, 2 FOR TWO PLAYERS, ESC TO QUIT)',0AH,0DH,'$'	;选择游戏的玩法
     EXIT DB 'ONE PLAYER HAS QUIT!',0AH,0DH,'$'							;一个玩家退出后播放音乐
-             MUS_FREQ DW 330,392,262,294,330,196,262,294,330,392,294				;建立频率表MUS_FREQ和结拍时间表MUS_TIME
-             DW 330,392,262,294,330,220,294,196,294,330,262
-             DW 440,392,440,262,330,220,330,392,294
-             DW 330,392,262,294,330,220,294,196,294,330,262
-             DW -1										;音乐播放结束符
-    MUS_TIME DW 2 DUP(2500),5000,2 DUP(2500),5000,4 DUP(2500),10000
-             DW 2 DUP(2500),5000,2 DUP(2500),5000,4 DUP(2500),10000
-             DW 4 DUP(5000),4 DUP(2500),10000
-             DW 2 DUP(2500),5000,2 DUP(2500),5000,4 DUP(2500),10000
+    MUS_FREQ DW 270,270,270,190,230,270,250,270,-1								;音乐播放结束符
+    MUS_TIME DW 3 DUP (30),50,50,30,30,80  
 DATA ENDS
 INISTACK SEGMENT STACK
 	DW 128H DUP(0)									;初始化堆栈						
 INISTACK ENDS
+
+ADDRESS MACRO A,B
+     LEA SI,A
+     LEA BP,DS:B
+ENDM
+
 CODE SEGMENT
 	ASSUME CS:CODE,DS:DATA,SS:INISTACK							;说明一个对应的关系，之后再把段的首地址赋值给段寄存器
 START:
@@ -45,36 +45,36 @@ START:
     MOV AL,2
 	MOV AH,0									;设置显示方式
 	INT 10H
-SELECT:                                 									;选择功能
-    MOV DX,OFFSET CHOOSE                								;选择单机或双机游戏
+SELECT:                                 		;选择功能
+    MOV DX,OFFSET CHOOSE                		;选择单机或双机游戏
 	MOV AH,09H									;使用21H中断的设置光标位置功能
 	INT 21H										;在屏幕上显示输入的内容
-    MOV AH,1										;使用21H号中断的显示输入功能						
+    MOV AH,1									;使用21H号中断的显示输入功能						
 	INT 21H
-	CMP AL,'1'                         								;1为单机
+	CMP AL,'1'                         			;1为单机
 	JE GAME1									;选择1后，回到单机游戏
-	CMP AL,'2'                          								;2为双机
+	CMP AL,'2'                          		;2为双机
 	JZ MARK										;选择2后，进入积分
-	CMP AL,27                           								;ESC退出
-    JZ GEND0										;游戏结束
-	MOV DX,OFFSET WRONG      								;输入错误给出提示，重新输入
+	CMP AL,27                           		;ESC退出
+    JZ GEND0									;游戏结束
+	MOV DX,OFFSET WRONG      					;输入不合规，要求重新输入
 	MOV AH,09H									;在屏幕上显示输入的内容
 	INT 21H
-	CALL BEEP									;调用播放音乐
+	CALL BEEP									;调用报错音
 	JMP SELECT									;回到选择功能
 GEND0:
-    MOV AH,4CH										;退出游戏
+    MOV AH,4CH									;退出游戏
 	INT 21H
 ;=========/*单机*/========
 GAME1:	                               
 	MOV AL,2									;在屏幕上显示输入的内容
 	MOV AH,0
 	INT 10H										;设置80*25黑白方式，清空屏幕
-	CALL INITIAL									;初始化计数器
+	CALL INITIAL								;初始化计数器
 	CALL PRINT									;打印棋盘
-	CALL SLED                           								;数码管显示当前状态
+	CALL SLED                           		;数码管显示当前状态
 HERE1:
-	MOV DX,OFFSET PUT								;放置棋子
+	MOV DX,OFFSET PUT							;放置棋子
 	MOV AH,09H									;在屏幕上显示输入的内容
 	INT 21H
 	MOV AH,1									;若输入的是ESC则退出
@@ -84,13 +84,13 @@ HERE1:
 	JMP RXY1									;否则输入坐标X Y
 QUIT:											;退出游戏的信息
 	MOV STATE,2									;把STATE的值设为2
-	MOV DX,OFFSET EXIT								;有人退出就显示退出消息
+	MOV DX,OFFSET EXIT							;有人退出就显示退出消息
 	MOV AH,09H									;使用21H号中断的显示输入功能
 	INT 21H 
 	CALL SLED									;数码管显示当前状态
 	JMP GEND1									;游戏结束
 MARK:
-    JMP GAME2										;进行下一局游戏
+    JMP GAME2									;进行下一局游戏
 RXY1:											;记录坐标X Y(ASCII码)
 	MOV X,AL									;记录x的坐标
 	INT 21H										;显示在屏幕上x的值
@@ -118,12 +118,12 @@ N1:	MOV AH,07									;无回显输入
 	JMP HERE1									;如果不可以落子则重新输入
 THERE1:
 	MOV MY,1									;我的坐标是1，对方的坐标是2
-	CALL PUTDOWN1									;落子v
+	CALL PUTDOWN1								;落子v
 	CALL ISWIN									;判断输赢，有结果则OVER=1
 	CALL PRINT									;打印棋盘
 	CMP OVER,1									;游戏结束																		
 	JNZ HERE1
-	MOV DX,OFFSET GAMEEND								;游戏结束的信息提示
+	MOV DX,OFFSET GAMEEND							;游戏结束的信息提示
     MOV AH,09H										;在屏幕上显示输入的内容
     INT 21H
     MOV AH,02H										;使用10H中断的设置位置功能																							
@@ -138,37 +138,37 @@ GEND1:
 	INT 21H
 ;=========/*双机*/========
 GAME2:											;双机游戏
-    MOV DX,OFFSET COLOR               								;选择先后手，1先手，2后手
-    MOV AH,09H										;在屏幕上显示输入的内容
+    MOV DX,OFFSET COLOR               			;选择先后手，1先手，2后手
+    MOV AH,09H									;在屏幕上显示输入的内容
     INT 21H
-    MOV AH,1										;游戏开始
+    MOV AH,1									;游戏开始
 	INT 21H
 	CMP AL,'1'
-	JE BLACK										;1为黑子
+	JE BLACK									;1为黑子
 	CMP AL,'2'
-	JZ WHITE										;2为白子
+	JZ WHITE									;2为白子
 	CMP AL,27									;若输入的是ESC
-    JZ GEND1										;则退出
-	MOV DX,OFFSET WRONG								;显示错误的提示信息
+    JZ GEND1									;则退出
+	MOV DX,OFFSET WRONG							;显示错误的提示信息
 	MOV AH,09H									;在屏幕上显示输入的内容
 	INT 21H
 	CALL BEEP									;播放提示音
 	JMP GAME2									;游戏结束
-WHITE:                               									;若执白后行，将我方棋子改为白MY=2，ORDER改为2
-    MOV MY,2										;我的坐标是1，对方的坐标是2
-    MOV STATE,1										;我已下完，正等待接收x
-    MOV ORDER,2										;等待对方落子
+WHITE:                               			;若执白后行，将我方棋子改为白MY=2，ORDER改为2
+    MOV MY,2									;我的坐标是1，对方的坐标是2
+    MOV STATE,1									;我已下完，正等待接收x
+    MOV ORDER,2									;等待对方落子
 BLACK:											;若执黑后行，将我方棋子改为白MY=1，ORDER改为1
 	MOV AL,2
 	MOV AH,0
 	INT 10H										;设置80*25黑白方式，清空屏幕
-	CALL INITIAL									;初始化计数器和通信
+	CALL INITIAL								;初始化计数器和通信
 	CALL PRINT									;打印棋盘
 	CALL SLED									;数码管显示当前状态
 HERE2:
 	CMP STATE,0									;根据STATE输出提示信息
 	JE SHOW
-	MOV DX,OFFSET WAIT1								;提示等待信息
+	MOV DX,OFFSET WAIT1							;提示等待信息
 	MOV AH,09H
 	INT 21H										;若该我下(STATE=0)则继续，否则等待
 	MOV AH,02H
@@ -180,22 +180,22 @@ WW:
 	CMP STATE,0									;根据STATE输出提示信息
 	JE SHOW
 	CMP STATE,4									;若对方退出或胜利，则跳出
-	JE ILOSE										;我输了																		
+	JE ILOSE									;我输了																		
 	CMP STATE,5									;若state的值为5
-	JE HQUIT										;他退出
+	JE HQUIT									;他退出
 	JMP WW
 SHOW:
-	MOV DX,OFFSET PUT								;提示落子信息
+	MOV DX,OFFSET PUT							;提示落子信息
 	MOV AH,09H									;在屏幕上显示输入的内容
 	INT 21H
-    CALL SLED										;数码管显示当前状态
+    CALL SLED									;数码管显示当前状态
 	MOV AH,1									;若输入的是ESC则退出
 	INT 21H
 	CMP AL,27									;若输入的是ESC
-	JE IQUIT										;我退出
+	JE IQUIT									;我退出
 	JMP RXY2									;否则输入坐标X Y
 ILOSE:											;我输了的提示信息
-	MOV DX,OFFSET SORRY								;提示抱歉信息
+	MOV DX,OFFSET SORRY							;提示抱歉信息
 	MOV AH,09H									;在屏幕上显示输入的内容
 	INT 21H
 	CALL SLED									;数码管显示当前状态
@@ -205,7 +205,7 @@ IQUIT:											;提示我退出的信息
 	CALL SENDQ									;我退出就给对方发信息
 	MOV STATE,3									;对方已获胜
 HQUIT:											;提示对方退出的信息
-	MOV DX,OFFSET EXIT								;有人退出就显示退出消息
+	MOV DX,OFFSET EXIT							;有人退出就显示退出消息
 	MOV AH,09H									;在屏幕上显示对方退出的信息
 	INT 21H
 	CALL SLED									;数码管显示当前状态
@@ -214,10 +214,10 @@ RXY2:											;记录坐标X Y(ASCII码)
 	MOV X,AL									;显示x的坐标在屏幕上					
 	INT 21H
 	CMP AL,27									;若是ESC则退出
-	JE IQUIT										;我退出
+	JE IQUIT									;我退出
 	INT 21H
 	CMP AL,27									;若是ESC则退出
-	JE IQUIT										;我退出
+	JE IQUIT									;我退出
 	MOV Y,AL									;显示y的坐标在屏幕上
 N2:	MOV AH,07									;无回显输入
 	INT 21H
@@ -383,7 +383,7 @@ MYERR:
 	MOV DX,OFFSET ERROR
 	MOV AH,09H									;在屏幕上显示输入错误的信息
     INT 21H
-	CALL BEEP									;播放音乐
+	CALL BEEP									;调用报错音
 RETURNC:
     POP DX										;恢复CPU现场
     POP CX
@@ -634,82 +634,108 @@ PRINT ENDP
 ;=========/*鸣响扬声器*/========
 BEEP PROC NEAR										;鸣响扬声器子程序
         PUSH CX										;保存cpu现场
-        MOV AL,10110110B									;计数器2、写低高、方式3、二进制
-        OUT 43H,AL										;写入控制字
+        MOV AL,10110110B							;计数器2、写低高、方式3、二进制
+        OUT 43H,AL									;写入控制字
         MOV AX,1000
-        OUT 42H,AL										;写入低8位计数值
+        OUT 42H,AL									;写入低8位计数值
         MOV AL,AH
-        OUT 42H,AL										;写入高8位计数值
-        MOV AL,AH
-        OUT 42H,AL
+        OUT 42H,AL									;写入高8位计数值
         MOV AL,AH
         OUT 42H,AL
-        IN AL,61H										;PB的端口地址
+        MOV AL,AH
+        OUT 42H,AL
+        IN AL,61H									;PB的端口地址
         MOV AH,AL
-        OR AL,03H										;表示打开扬声器只有PB0PB1同时为高电平 扬声器才能发声
-        OUT 61H,AL										;直接控制发声
-        MOV CX,0										;初始化字符指针
+        OR AL,03H									;表示打开扬声器只有PB0PB1同时为高电平 扬声器才能发声
+        OUT 61H,AL									;直接控制发声
+        MOV CX,0									;初始化字符指针
 L0:     LOOP L0
         DEC BL										;字符指针左移1个字节
         JNZ L0
         MOV AL,AH
-        OUT 61H,AL										;关闭发声
+        OUT 61H,AL									;关闭发声
         POP CX										;恢复cpu现场
         RET											;子程序结束返回
 BEEP ENDP
 ;=========/*播放音乐*/========
-MUSIC PROC NEAR										;播放音乐子程序
-        MOV AX,DATA
-        MOV DS,AX
-        LEA SI,MUS_FREQ									;将频率表偏移地址送SI
-        LEA BP,MUS_TIME									;将节拍时间表偏移地址送BP
-FREQ:
-        MOV DI,[SI]										;将频率值送人DI
-        CMP DI,-1
-        JE END_MUS
-        MOV BX,DS:[BP]									;取节拍时间送入BX
-        CALL SOUND										;调用SOUND子程序发出声调
-        ADD SI,2
-        ADD BP,2
-        JMP FREQ
-END_MUS:
-		RET									;子程序结束返回
-MUSIC ENDP
+GENSOUND PROC NEAR
+     PUSH AX            ;保存CPU现场
+     PUSH BX
+     PUSH CX
+     PUSH DX
+     PUSH DI
 
-SOUND PROC NEAR									;播放声音的信息	
-        PUSH AX										;保存CPU现场
-        PUSH BX
-        PUSH CX
-        PUSH DX
-        PUSH DI
-        MOV AL,0B6H										;初始化8253，使其计数器产生方波信号
-        OUT 43H,AL										;43H是8253控制寄存器的端口地址
-        MOV DX,12H										;设置被除数
-        MOV AX,34DCH									;DX:AX中的值设为1234DCH
-        DIV DI										;其商（AX）为预置值
-        OUT 42H,AL										;先送LSB
-        MOV AL,AH
-        OUT 42H,AL										;后送MSB
-        IN AL,61H										;读8255端口B（61H）原值
-        MOV AH,AL										;保存端口原值
-        OR AL,3										;开扬声器
-        OUT 61H,AL										;接通扬声器
-DELAY:  MOV CX,0BBBBH									;在80486/DX2/66中取
-DL10MS: LOOP DL10MS									;延时=BX值*10ms
-        DEC BX
-        JNZ DELAY										;延时=BX值*10ms
-        MOV AL,AH										;恢复8255端口61H的原值原值
-        OUT 61H,AL										;关闭扬声器
-        POP DI										;恢复CPU现场
-        POP DX							
-        POP CX
-        POP BX
-        POP AX
-        RET											;子程序结束返回
-SOUND ENDP
+     MOV AL, 0B6H
+     OUT 43H, AL
+     MOV DX, 12H
+     MOV AX, 348CH
+     DIV DI
+     OUT 42H, AL
+
+     MOV AL, AH
+     OUT 42H, AL
+
+     IN AL, 61H
+     MOV AH, AL
+     OR AL, 3
+     OUT 61H, AL
+SNDWAIT:
+     MOV CX, 3314
+     CALL WAITF
+DELAY1:
+     DEC BX
+     JNZ SNDWAIT
+
+     MOV AL, AH
+     OUT 61H, AL
+
+     POP DI            ;恢复CPU现场
+     POP DX
+     POP CX
+     POP BX
+     POP AX
+     RET 
+GENSOUND ENDP
+
+;--------------------------
+WAITF PROC NEAR
+      PUSH AX
+WAITF1:
+      IN AL,61H
+      AND AL,10H
+      CMP AL,AH
+      JE WAITF1
+      MOV AH,AL
+      LOOP WAITF1
+      POP AX
+      RET
+WAITF ENDP
+;--------------发声调用函数----------------
+MUSIC PROC NEAR
+    MOV AX, DATA
+    MOV DS, AX
+    MOV AX, INISTACK
+    MOV SS, AX
+    MOV SP, 200
+    ADDRESS MUS_FREQ, MUS_TIME
+    XOR AX, AX
+FREG:
+      MOV DI, [SI]
+      CMP DI, 0FFFFH
+      JE END_MUS
+      MOV BX, DS:[BP]
+      CALL GENSOUND
+      ADD SI, 2
+      ADD BP, 2
+      JMP FREG
+END_MUS:
+	MOV AH,4CH									;退出游戏
+	INT 21H
+    RET
+MUSIC ENDP
 ;=========/*发送X Y*/========
 SEND PROC NEAR										;查询方式发送X Y OVER
-	PUSH AX										;保存CPU现场
+	PUSH AX											;保存CPU现场
 	PUSH DX
 LOOPX:
 	MOV DX,0D409H
