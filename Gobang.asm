@@ -341,35 +341,42 @@ CHECK PROC NEAR										;落子位置是否合法的检查信息
 	PUSH BX
 	PUSH CX
 	PUSH DX
-    CMP X,'a'										;输出大于a，合法
-	JL CMPDX									;则进行数字判断
-	CMP X,'f'                           								;若输出大于f，不合法
-	JG MYERR										;报错信息
-	SUB X,39 
-	JMP CMPDY
-CMPDX:											;X的数字判断
-	CMP X,'1'                           								;输入小于1，不合法
-	JL MYERR										;报错信息
-	CMP X,'9'										;输入小于9，不合法
-	JG MYERR										;报错信息
-CMPDY:                                  									;输入X合法，比较Y
-    CMP Y,'A'										;输入小于A，合法
-	JL CMPDY1									;则进行数字判断 
-	CMP Y,'F'										;输入大于F，不合法
-	JG MYERR 										;报错信息
-	SUB Y,7
-	JMP SUBXY
-CMPDY1:											;Y的数字判断
-    CMP Y,'1'										;输入小于1，不合法
-	JL MYERR										;不合法
-	CMP Y,'9'										;输入小于9，不合法
-	JG MYERR										;不合法
+    MOV CX,2                                ; CMPD 循环两次
+	MOV AL,X                                ; X 放入 AL
+CMPD:	                                    ; 大小写转换，检查是否在棋盘范围内
+	DEC CX                                  ; CX 减一
+	CMP AL,'A'                              ; 判断 AL 是否小于 'A'
+	JL CMPLA                                ; 如果小于，跳转到 CMPLA
+	CMP AL,'F'								; 判断 AL 是否小于 'F'
+	JL CMPLF                                ; 如果小于，跳转到 CMPLF
+	CMP AL,'a'                              ; 判断 AL 是否小于 'a'
+	JL MYERR                                ; 如果小于，报错
+	CMP AL,'f'                              ; 判断 AL 是否大于 'f'
+	JG MYERR                                ; 如果大于，报错
+	SUB AL,32                               ; 小写转换为大写
+	SUB AL,7                                ; 减去 '9' 与 'A' 的差值
+CMPCX:	                                    ; 比较 CX,判断是否继续比较
+	CMP CX,0                                ; 判断 CX 是否为 0
+	JE SUBXY                                ; 如果等于零，Y已经检查过，跳转到 SUBXY
+	MOV X,AL                                ; 将改变后的 AL 放入 X
+	MOV AL,Y                                ; Y 放入 AL
+	JMP CMPD                                ; 检查 Y
+CMPLA:                                      ; AL 小于 'A',检查是否在0-9范围内
+	CMP AL,'1'                              ; 判断 AL 是否小于 '1'
+	JL MYERR                                ; 如果小于，报错
+	CMP AL,'9'                              ; 判断 AL 是否大于 '9'
+	JG MYERR                                ; 如果大于，报错
+	JMP CMPCX                               ; 判断 Y 是否检查过
+CMPLF:                                      ; AL 在 A-F 之间
+	SUB AL,7                                ; 减去 '9' 与 'A' 的差值
+	JMP CMPCX                               ; 判断 Y 是否检查过
 SUBXY:
-    SUB X,'1'                            									;将X改变为真实的值
-	SUB Y,'1'										;将Y改变为真实的值
-	MOV CX,0									;传送指令
+	MOV Y,AL                                ; 将改变后的 AL 放入 Y
+    SUB X,'1'                            	; 将X改变为真实的值
+	SUB Y,'1'								; 将Y改变为真实的值
+	MOV CX,0								; 传送指令
 	MOV CL,X
-	MOV BX,0									;清空寄存器
+	MOV BX,0								; 清空寄存器
 MULX1: 
     ADD BL,15										;棋子右移15单位
     LOOP MULX1										;循环MULX1
