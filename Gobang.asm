@@ -134,7 +134,7 @@ THERE1:
     INT 10H
     MOV STATE,3										;游戏结束我退出
     CALL SLED										;数码管显示当前状态
-	MOV MUSTYPE, 1									
+	MOV MUSTYPE, 1									;修改音乐类型
     CALL MUSIC										;播放音乐
 GEND1:
 	MOV AH,4CH									;退出游戏
