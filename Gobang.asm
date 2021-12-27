@@ -26,7 +26,9 @@ DATA SEGMENT
     CHOOSE DB 'PLEASE CHOOSE GAME MODEL:(1 FOR ONE PLAYER, 2 FOR TWO PLAYERS, ESC TO QUIT)',0AH,0DH,'$'	;选择游戏的玩法
     EXIT DB 'ONE PLAYER HAS QUIT!',0AH,0DH,'$'							;一个玩家退出后播放音乐
     MUS_FREQ DW 270,270,270,190,230,270,250,270,-1								;音乐播放结束符
-    MUS_TIME DW 3 DUP (30),50,50,30,30,80  
+    MUS_TIME DW 3 DUP (30),50,50,30,30,80 
+	MUS_FREQ0 DW 230,150,-1
+	MUS_TIME0 DW 30,30 
 DATA ENDS
 INISTACK SEGMENT STACK
 	DW 128H DUP(0)									;初始化堆栈						
@@ -52,13 +54,13 @@ SELECT:                                 		;选择功能
     MOV AH,1									;使用21H号中断的显示输入功能						
 	INT 21H
 	CMP AL,'1'                         			;1为单机
-	JE GAME1									;选择1后，回到单机游戏
+	JE GAME1									;输入为1，回到单机游戏
 	CMP AL,'2'                          		;2为双机
-	JZ MARK										;选择2后，进入积分
-	CMP AL,27                           		;ESC退出
+	JZ MARK										;输入为1，进入积分
+	CMP AL,27                           		;输入为ESC，退出
     JZ GEND0									;游戏结束
 	MOV DX,OFFSET WRONG      					;输入不合规，要求重新输入
-	MOV AH,09H									;在屏幕上显示输入的内容
+	MOV AH,09H									;在屏幕上显示内容
 	INT 21H
 	CALL BEEP									;调用报错音
 	JMP SELECT									;回到选择功能
@@ -89,7 +91,7 @@ QUIT:											;退出游戏的信息
 	INT 21H 
 	CALL SLED									;数码管显示当前状态
 	JMP GEND1									;游戏结束
-MARK:
+MARK:											;TODO待删
     JMP GAME2									;进行下一局游戏
 RXY1:											;记录坐标X Y(ASCII码)
 	MOV X,AL									;记录x的坐标
@@ -132,6 +134,7 @@ THERE1:
     INT 10H
     MOV STATE,3										;游戏结束我退出
     CALL SLED										;数码管显示当前状态
+	MOV MUSTYPE, 1									
     CALL MUSIC										;播放音乐
 GEND1:
 	MOV AH,4CH									;退出游戏
@@ -270,7 +273,8 @@ IWIN:											;我赢了则显示祝贺信息并播放音乐
 	MOV DH,10H									;光标的列坐标
 	INT 10H										;屏幕上显示我胜利的信息
 	MOV STATE,2									;我赢了
-	CALL SLED									;数码管显示当前状态													
+	CALL SLED									;数码管显示当前状态		
+	MOV MUSTYPE, 1								;音乐类型为胜利音乐				
 	CALL MUSIC									;播放音乐
 GEND2:
 	MOV AH,4CH									;退出游戏
@@ -619,7 +623,7 @@ NEXTLINE:
 	MOV Y,0										;初始化Y
     CMP X,15
 	JNE LOOP2
-    MOV DX,OFFSET CLEAN									;更新屏幕的信息提示
+    MOV DX,OFFSET CLEAN								;更新屏幕的信息提示
     MOV AH,09H										;使用21H中断的显示字符串功能
     INT 21H
     MOV AH,02H										;使用10H中断的设置光标位置功能
@@ -633,29 +637,9 @@ NEXTLINE:
 PRINT ENDP 
 ;=========/*鸣响扬声器*/========
 BEEP PROC NEAR										;鸣响扬声器子程序
-        PUSH CX										;保存cpu现场
-        MOV AL,10110110B							;计数器2、写低高、方式3、二进制
-        OUT 43H,AL									;写入控制字
-        MOV AX,1000
-        OUT 42H,AL									;写入低8位计数值
-        MOV AL,AH
-        OUT 42H,AL									;写入高8位计数值
-        MOV AL,AH
-        OUT 42H,AL
-        MOV AL,AH
-        OUT 42H,AL
-        IN AL,61H									;PB的端口地址
-        MOV AH,AL
-        OR AL,03H									;表示打开扬声器只有PB0PB1同时为高电平 扬声器才能发声
-        OUT 61H,AL									;直接控制发声
-        MOV CX,0									;初始化字符指针
-L0:     LOOP L0
-        DEC BL										;字符指针左移1个字节
-        JNZ L0
-        MOV AL,AH
-        OUT 61H,AL									;关闭发声
-        POP CX										;恢复cpu现场
-        RET											;子程序结束返回
+		MOV MUSTYPE, 0						;修改音乐类型为警告
+		CALL MUSIC
+		RET
 BEEP ENDP
 ;=========/*播放音乐*/========
 GENSOUND PROC NEAR
@@ -699,7 +683,7 @@ GENSOUND ENDP
 
 ;--------------------------
 WAITF PROC NEAR
-      PUSH AX
+	PUSH AX            ;保存CPU现场
 WAITF1:
       IN AL,61H
       AND AL,10H
@@ -714,10 +698,16 @@ WAITF ENDP
 MUSIC PROC NEAR
     MOV AX, DATA
     MOV DS, AX
-    MOV AX, INISTACK
-    MOV SS, AX
-    MOV SP, 200
-    ADDRESS MUS_FREQ, MUS_TIME
+    ;MOV AX, INISTACK
+    ;MOV SS, AX
+    ;MOV SP, 300
+	CMP MUSTYPE,1						;判断音乐类型
+	JE MUS_T1
+	ADDRESS MUS_FREQ0, MUS_TIME0		;取音乐0的地址
+	JMP MUSSTT
+MUS_T1:
+	ADDRESS MUS_FREQ, MUS_TIME			;取音乐1的地址
+MUSSTT:									;初始化完成，开始播放工作
     XOR AX, AX
 FREG:
       MOV DI, [SI]
@@ -729,10 +719,9 @@ FREG:
       ADD BP, 2
       JMP FREG
 END_MUS:
-	MOV AH,4CH									;退出游戏
-	INT 21H
     RET
 MUSIC ENDP
+
 ;=========/*发送X Y*/========
 SEND PROC NEAR										;查询方式发送X Y OVER
 	PUSH AX											;保存CPU现场
