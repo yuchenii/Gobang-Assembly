@@ -170,22 +170,23 @@ BLACK:											;若执黑后行，将我方棋子改为白MY=1，ORDER改为1
 	CALL SLED									;数码管显示当前状态
 HERE2:
 	CMP STATE,0									;根据STATE输出提示信息
-	JE SHOW
-	MOV DX,OFFSET WAIT1							;提示等待信息
+	JE SHOW										;应该是我下，跳转至SHOW
+	MOV DX,OFFSET WAIT1							;应该是对方下，提示等待
 	MOV AH,09H
-	INT 21H										;若该我下(STATE=0)则继续，否则等待
+	INT 21H										;输出请等待的信息
 	MOV AH,02H
 	MOV DL,00H									;光标从17,0开始
 	MOV DH,11H									;光标的列坐标
 	INT 10H
 	CALL SLED									;数码管显示当前状态
-WW:
+WW:	;TODO 这里发生了死循环
 	CMP STATE,0									;根据STATE输出提示信息
-	JE SHOW
-	CMP STATE,4									;若对方退出或胜利，则跳出
-	JE ILOSE									;我输了																		
-	CMP STATE,5									;若state的值为5
-	JE HQUIT									;他退出
+	JE SHOW										;如果是我下，转至SHOW
+	;TODO 缺少了STATE=1,即应该是对方下的情况
+	CMP STATE,4									;如果对方胜利
+	JE ILOSE									;																		
+	CMP STATE,5									;如果对方退出
+	JE HQUIT									;
 	JMP WW
 SHOW:
 	MOV DX,OFFSET PUT							;提示落子信息
@@ -197,17 +198,17 @@ SHOW:
 	CMP AL,27									;若输入的是ESC
 	JE IQUIT									;我退出
 	JMP RXY2									;否则输入坐标X Y
-ILOSE:											;我输了的提示信息
+ILOSE:											;“我输了”的处理程序
 	MOV DX,OFFSET SORRY							;提示抱歉信息
 	MOV AH,09H									;在屏幕上显示输入的内容
 	INT 21H
 	CALL SLED									;数码管显示当前状态
 	CALL MUSIC									;调用播放音乐
 	JMP GEND2									;游戏结束信息提示
-IQUIT:											;提示我退出的信息
+IQUIT:											;“我退出”的处理程序
 	CALL SENDQ									;我退出就给对方发信息
 	MOV STATE,3									;对方已获胜
-HQUIT:											;提示对方退出的信息
+HQUIT:											;“对方退出”的处理程序
 	MOV DX,OFFSET EXIT							;有人退出就显示退出消息
 	MOV AH,09H									;在屏幕上显示对方退出的信息
 	INT 21H
@@ -224,10 +225,10 @@ RXY2:											;记录坐标X Y(ASCII码)
 	MOV Y,AL									;显示y的坐标在屏幕上
 N2:	MOV AH,07									;无回显输入
 	INT 21H
-	CMP AL,27									;若是ESC则退出
-	JE IQUIT										;则是我退出
-	CMP AL,13									;若是回车则继续，否则等待回车
-	JNE N2										;再回到N2
+	CMP AL,27									;如果是ESC
+	JE IQUIT									;退出
+	CMP AL,13									;如果是回车，继续；
+	JNE N2										;如果不是回车，则循环等待
 	MOV AH,2
 	MOV DL,0AH									;输出回车换行
 	INT 21H
@@ -259,9 +260,9 @@ L3:
     mov AL,S2
     mov Y,AL        										;保存输入的坐标值y用于以后发送                                                
 	CALL SEND									;并发送坐标
-	CMP OVER,1									;落子结束
+	CMP OVER,1									;判断我是否赢了
 	JE IWIN										;跳转到IWIN子程序
-	MOV STATE,1									;将STATE置1，表示我已下完，等待对方的X
+	MOV STATE,1									;否则将STATE置1，表示我已下完，等待对方的X
 	CALL SLED									;数码管显示当前状态
 	JMP HERE2
 IWIN:											;我赢了则显示祝贺信息并播放音乐
