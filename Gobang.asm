@@ -470,13 +470,13 @@ MULX3:
 	LOOP MULX3									;循环MULX3
 	ADD BL,Y                           								;BX=15*X+Y
 	MOV DL,CHESSBOARD[BX]               																	
-	CMP ORDER,2                         								;根据执黑或执白判断自己是否获胜
+	CMP TEMP,0                         		   ; TEMP=0,判断白子是否获胜
 	JZ L4
-	CMP DL,1										;判断黑子是否可以落子
+	CMP DL,1										;判断黑子是否获胜
 	JE PANDUAN									;判断黑子是否可以连成5个
 	JMP NEXT									;进入下一轮判断
 L4:
-	CMP DL,2										;判断白子是否可以落子
+	CMP DL,2										;判断白子是否获胜
     JE PANDUAN										;判断白子是否连成5个
 	JMP NEXT 									;进入下一轮判断
 PANDUAN: 										;游戏胜利的判断
@@ -507,7 +507,7 @@ ISWIN ENDP
 TEST1 PROC NEAR										;横向判断子程序
     PUSH BX										;保存cpu现场
     CMP Y,10	 									;判断横向是否有10个字节
-    JG RETURN1										;若小于则横向不能连成5个
+    JG  RETURN1										;若小于则横向不能连成5个
     CMP DL,CHESSBOARD[BX+1]								;判断棋盘横向是否有2个棋子连在一起
     JNE RETURN1
     CMP DL,CHESSBOARD[BX+2]								;判断棋盘横向是否有3个棋子连在一起
