@@ -1,9 +1,11 @@
 ;TODO 彩色
 DATA SEGMENT
-	CHESSBOARD DB 218,13 DUP(194),191,13 DUP(195,13 DUP(197),180),192,13 DUP(193),217 	;设置棋盘的缓冲区
+	BLACK EQU 1          ; 黑棋
+	WHITE EQU 2          ; 白棋
+	CHESSBOARD DB 218,13 DUP(194),191,13 DUP(195,13 DUP(197),180),192,13 DUP(193),217 	;设置棋盘的缓冲区, 1黑棋 2白棋
 	X DB 0										;落子坐标 x
 	Y DB 0                                       ;落子坐标 y
-	MY DB 1										;我的坐标是1，对方的坐标是2
+	MY DB 1										; 自己的棋子颜色，1黑棋 2白棋
 	FLAG DB 0									;判断是否可以落子的标记，1为可以，0为不可以
 	STATE DB 0									;目前的状态，单机：0为游戏进行中，2为一方退出；3为一方获胜
 											;0该我下，1我已经下完，等待接受X；2等待接受Y；4对方获胜，5对方退出
@@ -11,7 +13,7 @@ DATA SEGMENT
 	LED DB 3FH,06H,5BH,4FH,66H,6DH,7DH,07H,7FH,6FH     					;七段数码管对应显示
     S1 DB 0                             									;用于保存输入坐标值x
     S2 DB 0										;用于保存输入坐标值y
-    TEMP DB 0                          	 								;单机时判断该下黑子还是白子
+    TEMP DB 1                          	 								;判断该下黑子还是白子，0黑棋，1白棋，默认为1白棋先行
     ORDER DB 1                          								;双机时标志先手or后手，1表示先手，2表示后手
     MUSTYPE DB 1								;最终音乐类型
 	TI DB ' 1 2 3 4 5 6 7 8 9 A B C D E F',0AH,0DH,'$'						;棋盘的y坐标
@@ -77,7 +79,7 @@ GAME1:
 	CALL PRINT									;打印棋盘
 	;CALL SLED                           		;数码管显示当前状态
 HERE1:
-	MOV DX,OFFSET PUT							;放置棋子
+	MOV DX,OFFSET PUT							;放置棋子的提示语句
 	MOV AH,09H									;在屏幕上显示输入的内容
 	INT 21H
 	MOV AH,1									;若输入的是ESC则退出
@@ -117,11 +119,11 @@ N1:	MOV AH,07									;无回显输入
 	MOV FLAG,1									;flag的值为1
 	CALL CHECK									;检查可否落子，将X，Y改变为真实的数值
 	CMP FLAG,1									;可以落子
-	JE THERE1									;可以落子则判断落子
+	JE THERE1									;可以落子则判断落子后输赢
 	JMP HERE1									;如果不可以落子则重新输入
 THERE1:
 	MOV MY,1									;我的坐标是1，对方的坐标是2
-	CALL PUTDOWN1								;落子v
+	CALL PUTDOWN1								;落子
 	CALL ISWIN									;判断输赢，有结果则OVER=1
 	CALL PRINT									;打印棋盘
 	CMP OVER,1									;游戏结束																		
@@ -140,17 +142,17 @@ THERE1:
 GEND1:
 	MOV AH,4CH									;退出游戏
 	INT 21H
-;=========/*双机*/========
-GAME2:											;双机游戏
+;=========/*人机*/========
+GAME2:											; 人机游戏
     MOV DX,OFFSET COLOR               			;选择先后手，1先手，2后手
     MOV AH,09H									;在屏幕上显示输入的内容
     INT 21H
     MOV AH,1									;游戏开始
 	INT 21H
 	CMP AL,'1'
-	JE BLACK									;1为黑子
+	JE SBLACK									;1为黑子
 	CMP AL,'2'
-	JZ WHITE									;2为白子
+	JZ SWHITE									;2为白子
 	CMP AL,27									;若输入的是ESC
     JZ GEND1									;则退出
 	MOV DX,OFFSET WRONG							;显示错误的提示信息
@@ -158,11 +160,11 @@ GAME2:											;双机游戏
 	INT 21H
 	CALL BEEP									;播放提示音
 	JMP GAME2									;游戏结束
-WHITE:                               			;若执白后行，将我方棋子改为白MY=2，ORDER改为2
-    MOV MY,2									;我的坐标是1，对方的坐标是2
+SBLACK:                               			;若执黑则后行，将我方棋子改为MY=1，ORDER改为2
+    MOV MY,1									;我的坐标是1，对方的坐标是2
     MOV STATE,1									;我已下完，正等待接收x
     MOV ORDER,2									;等待对方落子
-BLACK:											;若执黑后行，将我方棋子改为白MY=1，ORDER改为1
+SWHITE:											;若执白先行，将我方棋子改为白MY=2，ORDER改为1
 	MOV AL,2
 	MOV AH,0
 	INT 10H										;设置80*25黑白方式，清空屏幕
@@ -387,9 +389,9 @@ MULX1:
     ADD BL,15										;棋子右移15单位
     LOOP MULX1										;循环MULX1
 	ADD BL,Y										;棋子右移输入Y的值
-	CMP CHESSBOARD[BX],1                 							;若此处已有棋子，输入不合法
+	CMP CHESSBOARD[BX],BLACK                 			   ;若此处已有棋子，输入不合法
 	JE MYERR							;
-	CMP CHESSBOARD[BX],2								;若此处没有棋子，输入合法
+	CMP CHESSBOARD[BX],WHITE								;若此处没有棋子，输入合法
 	JNE RETURNC 
 MYERR:
     MOV FLAG,0                           								;对于不合法的输入，显示错误信息，并鸣响扬声器
@@ -419,11 +421,11 @@ MULX2:
 	ADD BL,Y										;字符指针右移Y个字节
 	CMP TEMP,0                         	 							;根据TEMP值，轮流放置黑子和白子
 	JE MM1
-	MOV CHESSBOARD[BX],2								;此处没有棋子
+	MOV CHESSBOARD[BX],WHITE								; 放白棋
 	MOV TEMP,0									;根据TEMP值，轮流放置黑子和白子
 	JMP YY1
 MM1:	
-    MOV CHESSBOARD[BX],1									;此处已有棋子
+    MOV CHESSBOARD[BX],BLACK									; 放黑棋
     MOV TEMP,1										;根据TEMP值，轮流放置黑子和白子
 YY1:	
     POP DX										;恢复CPU现场	
@@ -447,10 +449,10 @@ MULX4:
 	ADD BL,Y										;字符指针右移Y个字节
 	CMP MY,1									;我的坐标是1，对方的坐标是2
 	JE MM2
-	MOV CHESSBOARD[BX],2								;此处没有棋子
+	MOV CHESSBOARD[BX],WHITE								;放置白棋
 	JMP YY2										;返回调用处
 MM2:													
-    MOV CHESSBOARD[BX],1									;此处已有棋子
+    MOV CHESSBOARD[BX],BLACK									;放置黑棋
 YY2:														
 	POP DX										;恢复CPU现场
 	POP CX
