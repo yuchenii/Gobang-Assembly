@@ -1,3 +1,4 @@
+;TODO 彩色
 DATA SEGMENT
 	CHESSBOARD DB 218,13 DUP(194),191,13 DUP(195,13 DUP(197),180),192,13 DUP(193),217 	;设置棋盘的缓冲区
 	X DB 0										;落子坐标 x
@@ -74,7 +75,7 @@ GAME1:
 	INT 10H										;设置80*25黑白方式，清空屏幕
 	CALL INITIAL								;初始化计数器
 	CALL PRINT									;打印棋盘
-	CALL SLED                           		;数码管显示当前状态
+	;CALL SLED                           		;数码管显示当前状态
 HERE1:
 	MOV DX,OFFSET PUT							;放置棋子
 	MOV AH,09H									;在屏幕上显示输入的内容
@@ -89,7 +90,7 @@ QUIT:											;退出游戏的信息
 	MOV DX,OFFSET EXIT							;有人退出就显示退出消息
 	MOV AH,09H									;使用21H号中断的显示输入功能
 	INT 21H 
-	CALL SLED									;数码管显示当前状态
+	;CALL SLED									;数码管显示当前状态
 	JMP GEND1									;游戏结束
 MARK:											;TODO待删
     JMP GAME2									;进行下一局游戏
@@ -133,7 +134,7 @@ THERE1:
     MOV DH,11H										;设置光标的列坐标
     INT 10H
     MOV STATE,3										;游戏结束我退出
-    CALL SLED										;数码管显示当前状态
+    ;CALL SLED										;数码管显示当前状态
 	MOV MUSTYPE, 1									;修改音乐类型
     CALL MUSIC										;播放音乐
 GEND1:
@@ -167,7 +168,7 @@ BLACK:											;若执黑后行，将我方棋子改为白MY=1，ORDER改为1
 	INT 10H										;设置80*25黑白方式，清空屏幕
 	CALL INITIAL								;初始化计数器和通信
 	CALL PRINT									;打印棋盘
-	CALL SLED									;数码管显示当前状态
+	;CALL SLED									;数码管显示当前状态
 HERE2:
 	CMP STATE,0									;根据STATE输出提示信息
 	JE SHOW										;应该是我下，跳转至SHOW
@@ -178,7 +179,7 @@ HERE2:
 	MOV DL,00H									;光标从17,0开始
 	MOV DH,11H									;光标的列坐标
 	INT 10H
-	CALL SLED									;数码管显示当前状态
+	;CALL SLED									;数码管显示当前状态
 WW:	;TODO 这里发生了死循环
 	CMP STATE,0									;根据STATE输出提示信息
 	JE SHOW										;如果是我下，转至SHOW
@@ -192,7 +193,7 @@ SHOW:
 	MOV DX,OFFSET PUT							;提示落子信息
 	MOV AH,09H									;在屏幕上显示输入的内容
 	INT 21H
-    CALL SLED									;数码管显示当前状态
+    ;CALL SLED									;数码管显示当前状态
 	MOV AH,1									;若输入的是ESC则退出
 	INT 21H
 	CMP AL,27									;若输入的是ESC
@@ -202,7 +203,7 @@ ILOSE:											;“我输了”的处理程序
 	MOV DX,OFFSET SORRY							;提示抱歉信息
 	MOV AH,09H									;在屏幕上显示输入的内容
 	INT 21H
-	CALL SLED									;数码管显示当前状态
+	;CALL SLED									;数码管显示当前状态
 	CALL MUSIC									;调用播放音乐
 	JMP GEND2									;游戏结束信息提示
 IQUIT:											;“我退出”的处理程序
@@ -212,7 +213,7 @@ HQUIT:											;“对方退出”的处理程序
 	MOV DX,OFFSET EXIT							;有人退出就显示退出消息
 	MOV AH,09H									;在屏幕上显示对方退出的信息
 	INT 21H
-	CALL SLED									;数码管显示当前状态
+	;CALL SLED									;数码管显示当前状态
 	JMP GEND2									;游戏结束信息提示
 RXY2:											;记录坐标X Y(ASCII码)
 	MOV X,AL									;显示x的坐标在屏幕上					
@@ -263,7 +264,7 @@ L3:
 	CMP OVER,1									;判断我是否赢了
 	JE IWIN										;跳转到IWIN子程序
 	MOV STATE,1									;否则将STATE置1，表示我已下完，等待对方的X
-	CALL SLED									;数码管显示当前状态
+	;CALL SLED									;数码管显示当前状态
 	JMP HERE2
 IWIN:											;我赢了则显示祝贺信息并播放音乐
 	MOV DX,OFFSET CONGRA								;祝贺信息显示
@@ -274,7 +275,7 @@ IWIN:											;我赢了则显示祝贺信息并播放音乐
 	MOV DH,10H									;光标的列坐标
 	INT 10H										;屏幕上显示我胜利的信息
 	MOV STATE,2									;我赢了
-	CALL SLED									;数码管显示当前状态		
+	;CALL SLED									;数码管显示当前状态		
 	MOV MUSTYPE, 1								;音乐类型为胜利音乐				
 	CALL MUSIC									;播放音乐
 GEND2:
@@ -580,63 +581,68 @@ RETURN4:
    RET											;子程序结束返回
 TEST4 ENDP 	 
 ;=========/*打印棋盘*/========
-PRINT PROC NEAR										;打印棋盘
+PRINT PROC NEAR									;打印棋盘
 	PUSH SI
 	PUSH AX										;保存CPU现场
 	PUSH DX
-	MOV AH,02H									;使用10H中断的设置光标位置功能
+	MOV AH,02H									;使用INT 10H(BIOS中断)的设置光标位置功能:DH=行，DL=列
 	MOV DL,00H									;光标从0,0开始
-    MOV DH,00H										;光标的列坐标
+    MOV DH,00H										
     INT 10H	
-    MOV DX,OFFSET TI									;指定字符串  
-    MOV AH,09H										;屏幕显示字符串
+	;-----打印第一行(x=0)------
+    MOV DX,OFFSET TI							;打印棋盘的Y坐标(即最上面一行)  
+    MOV AH,09H									;显示字符串
     INT 21H
 	MOV X,0										;初始化X Y SI
 	MOV Y,0
 	MOV SI,0
 LOOP2: 
+	;------打印第一列(y=0),即每行的首位------
     CMP Y,0										;判断Y是否为0
-    JNE NOTHEAD
-    MOV DL,X
-    ADD DL,31H										;X的字符指针右移
-	CMP DL,'9'									;判断X是否大于等于9
+    JNE NOTHEAD									;如果是0，进入打印第一列的程序; 否则跳过
+    MOV DL,X									
+    ADD DL,31H									;将X从坐标(纯数字)转化成对应的ASCII字符
+	CMP DL,'9'									;如果字符是'1'~'9'，直接跳转至PP打印
 	JLE PP
-	ADD DL,39									;X的字符指针右移39个字节 
+	ADD DL,39									;如果字符是'a'~...，加上39转化后再打印 
 PP:
     MOV AH,02H
     INT 21H										;使用21H中断的输出字符功能
+;------打印棋盘中间部分-------
 NOTHEAD:
-    MOV DL,CHESSBOARD[SI]
-    MOV AH,02H
-	INT 21H
-	INC SI										;SI、Y指针同时右移1个字节，指向下一个字符
-	INC Y										;SI、Y指针同时右移1个字节，指向下一个字符
-	CMP Y,15										;判断Y的大小
+	;------循环打印每一行-------
+    MOV DL,CHESSBOARD[SI]						;Y和SI表示记录所在的列(y坐标)
+    MOV AH,02H									
+	INT 21H										
+	INC SI										;打印下一个字符，即Y+=1,SI+=1
+	INC Y										
+	CMP Y,15									;如果到达当前行的末尾，则跳转至换行程序
 	JE NEXTLINE
-	MOV DL,'-'									;输出一个'-'
+	MOV DL,'-'									;否则输出一个'-'
 	MOV AH,02H									;使用21H中断的输出字符功能
 	INT 21H
 	JMP LOOP2									;回到循环2
 NEXTLINE:
+	;-------换行-------
     MOV DL,32
     MOV AH,02H
 	INT 21H
 	MOV DL,0AH									;输出一个回车符（0AH）
-	MOV AH,02H									;使用21H中断的输出字符功能
+	MOV AH,02H									
 	INT 21H
 	MOV DL,0DH									;输出一个换行符（0AD）
-	MOV AH,02H									;使用21H中断的输出字符功能
+	MOV AH,02H									
 	INT 21H
-    INC X											;X的字符指针右移1个字节
-	MOV Y,0										;初始化Y
-    CMP X,15
-	JNE LOOP2
-    MOV DX,OFFSET CLEAN								;更新屏幕的信息提示
-    MOV AH,09H										;使用21H中断的显示字符串功能
+    INC X										;准备打印下一行, X+=1
+	MOV Y,0										;复位Y，使回到新行的第一位
+    CMP X,15									;如果棋盘没有全部打印完成
+	JNE LOOP2									;跳转至循环部分继续打印
+    MOV DX,OFFSET CLEAN							;否则更新屏幕的信息提示
+    MOV AH,09H									
     INT 21H
-    MOV AH,02H										;使用10H中断的设置光标位置功能
-	MOV DL,00H									;光标从0,17开始
-    MOV DH,10H										;设置光标的列坐标
+    MOV AH,02H									;使用INT 10H(BIOS中断)的设置光标位置功能:DH=行，DL=列
+	MOV DL,00H									;光标从10行 0列开始
+    MOV DH,10H									
 	INT 10H
 	POP DX										;恢复CPU现场
 	POP AX
@@ -688,7 +694,6 @@ DELAY1:
      POP AX
      RET 
 GENSOUND ENDP
-
 ;--------------------------
 WAITF PROC NEAR
 	PUSH AX            ;保存CPU现场
@@ -754,7 +759,7 @@ MLOOP:
 	POP AX
 	RET										;子程序结束返回
 SEND ENDP
-;/*发送我退出的消息*/
+;=========发送我退出的消息=========*/
 SENDQ PROC NEAR																															
 	PUSH AX										;保存CPU现场
 	PUSH DX
@@ -796,7 +801,7 @@ IRQ11 PROC FAR
     CMP AL,59                           			
     JNZ L9											;若对方退出，将状态改为5
     MOV STATE,5										;对方退出
-    CALL SLED										;数码管显示当前状态5
+    ;CALL SLED										;数码管显示当前状态5
     JMP CLE										;清空棋盘
 L9:    
     CMP AL,60
@@ -820,7 +825,7 @@ YY:
     CALL PRINT										;打印棋盘
     MOV MY,1										;我的坐标是1
     mov state,0										;游戏正在进行中
-    call sled      										;数码管显示当前状态                                             
+    ;call sled      										;数码管显示当前状态                                             
     JMP CLE										;棋盘屏幕更新
 L7: 
     MOV MY,1										;我的坐标是1，对方的坐标是2
@@ -829,11 +834,11 @@ L7:
     CALL PRINT										;打印棋盘
     MOV MY,2										;我的坐标是2，对方坐标是1
     mov state,0										;该我落子
-    call sled   										;数码管显示当前状态                                                 
+    ;call sled   										;数码管显示当前状态                                                 
     JMP CLE										;屏幕棋盘更新
 HWIN:											;如果他赢了，STATE=4
     MOV STATE,4										;对方赢了
-    CALL SLED    										;数码管显示当前状态                                                  
+    ;CALL SLED    										;数码管显示当前状态                                                  
     JMP CLE										;清空棋盘
 CLE:
 	MOV AL,20H									;清除PCI9052中断标志
