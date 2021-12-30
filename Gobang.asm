@@ -15,6 +15,8 @@ DATA SEGMENT
     TEMP DB 1                          	 								;判断该下黑子还是白子，0黑棋，1白棋，默认为1白棋先行
     ORDER DB 1                          								;双机时标志先手or后手，1表示先手，2表示后手
     MUSTYPE DB 1								;最终音乐类型
+	SCORE DW 1                                  ; 当前位置的分数
+	MAXSCORE DW 1                               ; 当前棋盘最高分数
 	TI DB ' 1 2 3 4 5 6 7 8 9 A B C D E F',0AH,0DH,'$'						;棋盘的y坐标
     ERROR DB 'YOU CANNOT PUT HERE!',0AH,0DH,'$' 						;报错,"你不能放在这里"
     WRONG DB 0AH,0DH,'FALSE INPUT!',0AH,0DH,'$'						;错误信息的提示
@@ -143,7 +145,7 @@ GEND1:
 	INT 21H
 ;=========/*人机*/========
 GAME2:											; 人机游戏
-    MOV DX,OFFSET COLOR               			;选择先后手，1先手，2后手
+    MOV DX,OFFSET COLOR               			;选择先后手，1后手，2先手
     MOV AH,09H									;在屏幕上显示输入的内容
     INT 21H
     MOV AH,1									;游戏开始
@@ -160,11 +162,11 @@ GAME2:											; 人机游戏
 	CALL BEEP									;播放提示音
 	JMP GAME2									;游戏结束
 SBLACK:                               			;若执黑则后行，将我方棋子改为MY=1，ORDER改为2
-    MOV MY,1									;我的坐标是1，对方的坐标是2
+    MOV MY,BLACK									; 我执黑棋，对方执白棋
     MOV STATE,1									;我已下完，正等待接收x
     MOV ORDER,2									;等待对方落子
 SWHITE:											;若执白先行，将我方棋子改为白MY=2，ORDER改为1
-	MOV AL,2
+	MOV AL,2  
 	MOV AH,0
 	INT 10H										;设置80*25黑白方式，清空屏幕
 	CALL INITIAL								;初始化计数器和通信
@@ -180,16 +182,29 @@ HERE2:
 	MOV DL,00H									;光标从17,0开始
 	MOV DH,11H									;光标的列坐标
 	INT 10H
-	CALL SLED									;数码管显示当前状态
+	CALL SLED									;数码管显示当前状态	
 WW:	;TODO 这里发生了死循环
 	CMP STATE,0									;根据STATE输出提示信息
 	JE SHOW										;如果是我下，转至SHOW
 	;TODO 缺少了STATE=1,即应该是对方下的情况
+	CMP STATE,1	;                               ; STATE为1，则机器下
+	JE ROBOT									;跳转至ROBOT,机器落子
 	CMP STATE,4									;如果对方胜利
 	JE ILOSE									;																		
 	CMP STATE,5									;如果对方退出
 	JE HQUIT									;
 	JMP WW
+ROBOT:
+    MOV FLAG,1
+    CALL FINDPLACE						        ; 机器寻找最优的落子位置
+	CALL ROBOTPUTDOWN							; 机器落子
+	CALL ISWIN                                  ; 判断是否赢了
+	CALL PRINT									; 打印棋盘
+	CMP OVER,1                                  ; 判断游戏是否结束
+	JE ILOSE									; 机器胜利
+	CALL BEEP									; 播放提示音
+	MOV STATE,0									; 机器下完，改变STATE
+	JMP HERE2                                   ; 机器下完我下
 SHOW:
 	MOV DX,OFFSET PUT							;提示落子信息
 	MOV AH,09H									;在屏幕上显示输入的内容
@@ -249,10 +264,10 @@ THERE2:
     CMP ORDER,2										;选择后手落子
     JZ L2
 L1:
- 	MOV MY,1									;我的坐标是1，对方的坐标是2
+ 	MOV MY,WHITE									;我是白棋，对方是黑棋
  	JMP L3
 L2: 
-    MOV MY,2										;我的坐标是2，对方坐标是1
+    MOV MY,BLACK								    ; 我是黑棋，对方是白棋
 L3:
 	CALL PUTDOWN2									;落子
 	CALL ISWIN									;判断输赢，有结果则OVER=1
@@ -393,7 +408,7 @@ MULX1:
 	CMP CHESSBOARD[BX],WHITE								;若此处没有棋子，输入合法
 	JNE RETURNC 
 MYERR:
-    MOV FLAG,0                           								;对于不合法的输入，显示错误信息，并鸣响扬声器
+    MOV FLAG,0                           		; 对于不合法的输入，显示错误信息，并鸣响扬声器
 	MOV DX,OFFSET ERROR
 	MOV AH,09H									;在屏幕上显示输入错误的信息
     INT 21H
@@ -446,19 +461,144 @@ MULX4:
 	ADD BL,15									;字符指针右移15个字节
 	LOOP MULX4									;循环MULX4
 	ADD BL,Y										;字符指针右移Y个字节
-	CMP MY,1									;我的坐标是1，对方的坐标是2
+	CMP MY,1									; 判断我是白棋还是黑棋
 	JE MM2
 	MOV CHESSBOARD[BX],WHITE								;放置白棋
+	MOV TEMP,0                                  ; 接下来轮到黑棋下 
 	JMP YY2										;返回调用处
 MM2:													
     MOV CHESSBOARD[BX],BLACK									;放置黑棋
-YY2:														
+	MOV TEMP,1                                  ; 接下来轮到白棋下
+YY2:														 
 	POP DX										;恢复CPU现场
 	POP CX
 	POP BX
 	POP AX
 	RET
 PUTDOWN2 ENDP
+;=====/*机器寻找落子的位置*/=======
+FINDPLACE PROC NEAR
+	PUSH AX										;保存CPU现场
+	PUSH BX
+	PUSH CX
+	PUSH DX
+	MOV X,2
+	MOV Y,2
+	MOV SCORE,1                                 ;初始化分数
+	MOV MAXSCORE,1							  ;初始化最大分数
+	MOV BX,0									;清空寄存器                                
+FIND:
+	MOV FLAG,1
+	CALL CHECKPLACE 						    ; 调用检查子程序
+	CMP FLAG,0                                  ; 如果不能落子
+    JE NEXTY                                    ; 则继续寻找
+	CALL CALSCORE							    ; 计算当前位置分数
+	MOV CX,MAXSCORE
+	CMP SCORE,CX						    
+    JL NEXTY									; 如果当前位置分数小于最高分数,则继续
+	MOV CX,SCORE
+	MOV MAXSCORE,CX								; 如果当前位置分数大于最高分数,则替换最高分数
+	MOV BL,X                                 ; 保存当前最高分数的位置x
+	MOV BH,Y                                  ; 保存当前最高分数的位置y
+	MOV SCORE,1                               ; 重置分数
+NEXTY:
+    INC Y
+	CMP Y,13
+    JNE FIND
+	MOV Y,2
+	INC X
+	CMP X,13
+	JNE FIND
+HASFIND:
+	MOV X,BL
+	MOV Y,BH
+    POP DX										;恢复CPU现场
+	POP CX
+	POP BX
+	POP AX
+	RET
+FINDPLACE ENDP	 
+;=====/*检查机器落子位置是否合法*/=======
+CHECKPLACE PROC NEAR
+	PUSH AX										;保存CPU现场
+	PUSH BX
+	PUSH CX
+	PUSH DX
+	CMP X,0
+	JL INPUTERR
+	CMP X,14
+	JG INPUTERR
+	CMP Y,0
+	JL INPUTERR
+	CMP Y,14
+	JG INPUTERR
+	MOV CX,0								; 传送指令
+	MOV CL,X
+	MOV BX,0								; 清空寄存器
+MULX5: 
+    ADD BL,15										;棋子右移15单位
+    LOOP MULX5										;循环MULX1
+	ADD BL,Y										;棋子右移输入Y的值
+	CMP CHESSBOARD[BX],BLACK                 			   ;若此处已有棋子，输入不合法
+	JE INPUTERR							;
+	CMP CHESSBOARD[BX],WHITE								;若此处没有棋子，输入合法
+	JNE FINISHCHECK
+INPUTERR:
+    MOV FLAG,0                           		; 对于不合法的输入，显示错误信息，并鸣响扬声器
+	MOV DX,OFFSET WAIT1							;应该是对方下，提示等待
+	MOV AH,09H
+	INT 21H										;输出请等待的信息
+FINISHCHECK:
+    POP DX										;恢复CPU现场										
+	POP CX                                    
+	POP BX
+	POP AX
+	RET
+CHECKPLACE ENDP
+
+CALSCORE PROC NEAR
+	PUSH AX										;保存CPU现场
+	PUSH BX
+	PUSH CX
+	PUSH DX
+	JMP FINISHCAL
+FINISHCAL:
+    POP DX
+	POP CX
+	POP BX
+	POP AX
+	RET
+CALSCORE ENDP
+  
+
+;========/*机器落子*/=============
+ROBOTPUTDOWN PROC NEAR
+	PUSH AX										;保存CPU现场
+	PUSH BX
+	PUSH CX
+	PUSH DX
+	MOV CX,0									;字符指针初始化
+	MOV CL,X	
+	MOV BX,0									;清空寄存器
+MULX6: 
+	ADD BL,15									;字符指针右移15个字节
+	LOOP MULX6									;循环MULX4
+	ADD BL,Y									;字符指针右移Y个字节
+	CMP MY,2									; 判断我是白棋还是黑棋
+	JE MM3                                      ; 如果是白棋,则机器为黑棋
+	MOV CHESSBOARD[BX],WHITE					; 放置白棋
+	MOV TEMP,0                                   ; 接下来轮到黑棋下
+	JMP HASPUTDOWN								; 找到了落子位置
+MM3:													
+    MOV CHESSBOARD[BX],BLACK					; 放置黑棋
+	MOV TEMP,1                                   ; 接下来轮到白棋下
+HASPUTDOWN:
+	POP DX										;恢复CPU现场
+	POP CX
+	POP BX
+	POP AX
+	RET
+ROBOTPUTDOWN ENDP
 ;=========/*判断是否获胜*/========
 ISWIN PROC NEAR										;我获胜的信息提示
     MOV X,0										;初始化X和Y
@@ -474,11 +614,11 @@ MULX3:
 	MOV DL,CHESSBOARD[BX]               																	
 	CMP TEMP,0                         		   ; TEMP=0,判断白子是否获胜
 	JZ L4
-	CMP DL,1										;判断黑子是否获胜
+	CMP DL,BLACK										;判断黑子是否获胜
 	JE PANDUAN									;判断黑子是否可以连成5个
 	JMP NEXT									;进入下一轮判断
 L4:
-	CMP DL,2										;判断白子是否获胜
+	CMP DL,WHITE										;判断白子是否获胜
     JE PANDUAN										;判断白子是否连成5个
 	JMP NEXT 									;进入下一轮判断
 PANDUAN: 										;游戏胜利的判断
