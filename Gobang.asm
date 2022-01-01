@@ -18,6 +18,8 @@ DATA SEGMENT
 	SCORE DW 1                                  ; 当前位置的分数
 	MAXSCORE DW 0                               ; 当前棋盘最高分数
 	NUMM DW 0									; 已下棋子的个数
+	CHESSMODEL DB 9 DUP(0)						; 棋形
+	CHESSSCORE DW 3,2,5,10,8,200,200,1000,10000 ; 棋形对应的分数
 	TI DB ' 1 2 3 4 5 6 7 8 9 A B C D E F',0AH,0DH,'$'						;棋盘的y坐标
     ERROR DB 'YOU CANNOT PUT HERE!',0AH,0DH,'$' 						;报错,"你不能放在这里"
     WRONG DB 0AH,0DH,'FALSE INPUT!',0AH,0DH,'$'						;错误信息的提示
@@ -485,8 +487,8 @@ FINDPLACE PROC NEAR
 	PUSH BX
 	PUSH CX
 	PUSH DX
-	MOV X,2
-	MOV Y,2
+	MOV X,0
+	MOV Y,0
 	MOV SCORE,1                                 ;初始化分数
 	MOV MAXSCORE,0							  ;初始化最大分数
 	CMP NUMM,0                                 ; 判断是不是首颗棋子
@@ -511,11 +513,11 @@ FIND:
 	MOV BH,Y                                  ; 保存当前最高分数的位置y
 NEXTY:
     INC Y                                   ; 右移一位
-	CMP Y,13
+	CMP Y,15
     JNE FIND
 	MOV Y,2                                ; 从头开始
 	INC X                                  ; 下面一行
-	CMP X,13                               ; 判断是否已经到达最后一行
+	CMP X,15                               ; 判断是否已经到达最后一行
 	JNE FIND                               ; 如果没有到达最后一行,则继续
 HASFIND:
 	MOV X,BL                               ; 保存最高分数的位置x
@@ -572,7 +574,7 @@ CALSCORE PROC NEAR
 	MOV DX,0
     MOV BX,0
 	MOV CX,0
-	MOV CL,X
+	MOV CL,X        ; 第x行
 	CMP MY,1        ; 判断机器黑棋还是白棋
     JE MYBLACK
 	MOV DL,BLACK    ; 机器是黑棋
@@ -583,29 +585,59 @@ MYBLACK:
 	MOV DH,BLACK    ; 玩家是黑棋
     JMP MULX7
 MULX7:
-    ADD BL,15
-	LOOP MULX7										
-	ADD BL,Y
+    ADD BL,15      ; 下移一行
+	LOOP MULX7	   ; 直到第x行								
+	ADD BL,Y       ; 右移y个单位
+	MOV CX,8       ; 计算分数，循环八次
 	CALL SCORE1
-	CMP SCORE,10000
-	JGE FINISHCAL
+	CMP CHESSMODEL[16],1   ; 如果有一个能五连
+	JGE FINISHCAL          ; 则结束计算
 	CALL SCORE2
-	CMP SCORE,10000 
+	CMP CHESSMODEL[16],1 
 	JGE FINISHCAL
 	CALL SCORE3
-	CMP SCORE,10000
+	CMP CHESSMODEL[16],1
 	JGE FINISHCAL
 	CALL SCORE4
-	CMP SCORE,10000
-	JMP FINISHCAL
+	CMP CHESSMODEL[16],1
+	JGE FINISHCAL
+	CALL SCORE5
+	CMP CHESSMODEL[16],1
+	JGE FINISHCAL
+	CALL SCORE6
+	CMP CHESSMODEL[16],1
+	JGE FINISHCAL
+	CALL SCORE7
+	CMP CHESSMODEL[16],1
+	JGE FINISHCAL
+	CALL SCORE8
 FINISHCAL:
+	CLC
+    MOV AX,0               ; 清零
+	MOV DX,0               ; 清零
+	MOV BX,CX              ; 第cx个
+	MOV AL,CHESSMODEL[BX]  ; 第bx个棋形的个数
+	ADD BX,BX              ; CHESSSCORE是word类型，所以偏移地址为2BX
+    MUL CHESSSCORE[BX]     ; chessscore[bx]*chessmodel[bx]
+	ADD SCORE,AX           ; 加到总分
+	LOOP FINISHCAL         ; 循环计算
+	MOV AX,0
+	MOV AL,CHESSMODEL[0]   ; 计算第一个棋形的分数
+	MUL CHESSSCORE[0]
+	ADD SCORE,AX
+	MOV CX,8
+CLEARCM:                   ; 清空棋形数组
+	MOV BX,CX
+	MOV CHESSMODEL[BX],0
+	LOOP CLEARCM
+	MOV CHESSMODEL[0],0	
     POP DX
 	POP CX
 	POP BX
 	POP AX
 	RET
 CALSCORE ENDP
-;=========/*判断横向是否连成5个*/========
+;=========/*判断东方向的棋形*/========
 SCORE1 PROC NEAR								;横向判断子程序
     PUSH BX										;保存cpu现场
     CMP Y,10	 									;判断横向是否有10个字节
@@ -618,44 +650,44 @@ SCORE1 PROC NEAR								;横向判断子程序
     JNE SC13
     CMP DL,CHESSBOARD[BX+4]								;判断棋盘横向是否有5个棋子连在一起
     JNE SC14
-    ADD SCORE,10000										;1111,10000分
+    INC CHESSMODEL[8]										;1111,10000分
 	JMP SC10
 SC11:
     CMP DH,CHESSBOARD[BX+1]
 	JE SC111
-	ADD SCORE,2                          ; 0XXX,2分  
+	INC CHESSMODEL[1]                          ; 0XXX,2分  
 	JMP SC10
 SC111:
-	ADD SCORE,3                          ; 2XXX，3分   
+	INC CHESSMODEL[0]                          ; 2XXX，3分   
 	JMP SC10
 SC12:
     CMP DH,CHESSBOARD[BX+2]
 	JE SC121
-	ADD SCORE,10                          ; 10XX,10分
+	INC CHESSMODEL[3]                          ; 10XX,10分
 	JMP SC10
 SC121:
-	ADD SCORE,5                          ; 12XX,5分
+	INC CHESSMODEL[2]                         ; 12XX,5分
 	JMP SC10
 SC13:
 	CMP DH,CHESSBOARD[BX+3]
 	JE SC131
-	ADD SCORE,200                       ; 110X,200分
+	INC CHESSMODEL[5]                      ; 110X,200分
 	JMP SC10
 SC131:
-    ADD SCORE,8                            ; 112X,8分
+    INC CHESSMODEL[4]                            ; 112X,8分
 	JMP SC10	
 SC14:
 	CMP DH,CHESSBOARD[BX+4]
 	JE SC141
-	ADD SCORE,1000                        ; 1110,1000分
+	INC CHESSMODEL[7]                        ; 1110,1000分
 	JMP SC10
 SC141:
-	ADD SCORE,100                           ; 1112,100分
+	INC CHESSMODEL[6]                           ; 1112,100分
 SC10: 
     POP BX										;恢复cpu现场
     RET											;子程序结束返回 
 SCORE1 ENDP
-;=========/*判断纵向是否连成5个*/========
+;=========/*判断南方向的棋形*/========
 SCORE2 PROC NEAR										;纵向判断子程序
    PUSH BX										;保存cpu现场
    CMP X,10										;判断纵向是否有10个字节
@@ -668,43 +700,43 @@ SCORE2 PROC NEAR										;纵向判断子程序
    JNE SC23
    CMP DL,CHESSBOARD[BX+60]								;判断棋盘纵向是否有5个棋子连在一起
    JNE SC24
-   ADD SCORE,10000   									;1111,10000分
+   INC CHESSMODEL[8]   									;1111,10000分
 SC21:
    CMP DH,CHESSBOARD[BX+15]
    JE SC211
-   ADD SCORE,2                          ; 0XXX,2分  
+   INC CHESSMODEL[1]                          ; 0XXX,2分  
    JMP SC20	
 SC211:
-	ADD SCORE,3                          ; 2XXX，3分   
+	INC CHESSMODEL[0]                          ; 2XXX，3分   
     JMP SC20
 SC22:
    	CMP DH,CHESSBOARD[BX+30]
    	JE SC221
-   	ADD SCORE,10                          ; 10XX,10分
+   	INC CHESSMODEL[3]                         ; 10XX,10分
 	JMP SC20
 SC221:
-	ADD SCORE,5                          ; 12XX,5分
+	INC CHESSMODEL[2]                         ; 12XX,5分
     JMP SC20
 SC23:
 	CMP DH,CHESSBOARD[BX+45]
 	JE SC231
-	ADD SCORE,200                       ; 110X,200分
+	INC CHESSMODEL[5]                       ; 110X,200分
 	JMP SC20
 SC231:
-	ADD SCORE,8                            ; 112X,8分
+	INC CHESSMODEL[4]                            ; 112X,8分
 	JMP SC20
 SC24:
 	CMP DH,CHESSBOARD[BX+60]
 	JE SC241
-	ADD SCORE,1000                        ; 1110,1000分
+	INC CHESSMODEL[7]                        ; 1110,1000分
 	JMP SC20
 SC241:
-	ADD SCORE,100                           ; 1112,100分
+	INC CHESSMODEL[6]                         ; 1112,100分
 SC20: 
    POP BX
    RET											;子程序结束返回
 SCORE2 ENDP
-;=========/*判断斜上是否连成5个*/========
+;=========/*判断东北方向的棋形*/========
 SCORE3 PROC NEAR										;斜上判断子程序
    PUSH BX										;保存cpu现场
    CMP X,4		      								;判断纵向是否有4个字节                  																	
@@ -719,93 +751,295 @@ SCORE3 PROC NEAR										;斜上判断子程序
    JNE SC33
    CMP DL,CHESSBOARD[BX-56]								;判断棋盘斜上是否有5个棋子连在一起
    JNE SC34
-   MOV SCORE,10000   									;1111,10000分
+   INC CHESSMODEL[8]  									;1111,10000分
 SC31:
 	CMP DH,CHESSBOARD[BX-14]
    	JE SC311
-   	ADD SCORE,2                          ; 0XXX,2分  
+   	INC CHESSMODEL[1]                          ; 0XXX,2分  
    	JMP SC30
 SC311:
-	ADD SCORE,3                          ; 2XXX，3分   
+	INC CHESSMODEL[0]                        ; 2XXX，3分   
 	JMP SC30
 SC32:
    	CMP DH,CHESSBOARD[BX-28]
    	JE SC321
-   	ADD SCORE,10                          ; 10XX,10分
+   	INC CHESSMODEL[3]                         ; 10XX,10分
 	JMP SC30
 SC321:
-	ADD SCORE,5                          ; 12XX,5分
+	INC CHESSMODEL[2]                          ; 12XX,5分
 	JMP SC30
 SC33:
 	CMP DH,CHESSBOARD[BX-42]
 	JE SC331
-	ADD SCORE,200                       ; 110X,200分
+	INC CHESSMODEL[5]                      ; 110X,200分
 	JMP SC30
 SC331:
-	ADD SCORE,8                            ; 112X,8分
+	INC CHESSMODEL[4]                          ; 112X,8分
 	JMP SC30
 SC34:
 	CMP DH,CHESSBOARD[BX-56]
 	JE SC341
-	ADD SCORE,1000                        ; 1110,1000分
+	INC CHESSMODEL[7]                        ; 1110,1000分
 	JMP SC30
 SC341:
-	ADD SCORE,100                           ; 1112,100分
+	INC CHESSMODEL[6]                          ; 1112,100分
 SC30: 
    POP BX
    RET											;子程序结束返回
 SCORE3 ENDP
-;=========/*判断斜下是否连成5个*/========
+;=========/*判断东南方向的棋形*/========
 SCORE4 PROC NEAR										;斜下判断子程序
-   PUSH BX										;保存cpu现场
-   CMP X,10										;判断纵向是否有10个字节
-   JG SC40										;若小于则斜下不能连成5个
-   CMP Y,10										;判断横向是否有10个字节
-   JG SC40         									;若小于则斜下不能连成5个  ;不能斜下
-   CMP DL,CHESSBOARD[BX+16]								;判断棋盘斜下是否有2个棋子连在一起 
-   JNE SC41
-   CMP DL,CHESSBOARD[BX+32]								;判断棋盘斜下是否有3个棋子连在一起
-   JNE SC42
-   CMP DL,CHESSBOARD[BX+48]								;判断棋盘斜下是否有4个棋子连在一起
-   JNE SC43
-   CMP DL,CHESSBOARD[BX+64]								;判断棋盘斜下是否有5个棋子连在一起
+   	PUSH BX										;保存cpu现场
+   	CMP X,10										;判断纵向是否有10个字节
+   	JG SC40										;若小于则斜下不能连成5个
+   	CMP Y,10										;判断横向是否有10个字节
+   	JG SC40         									;若小于则斜下不能连成5个  ;不能斜下
+   	CMP DL,CHESSBOARD[BX+16]								;判断棋盘斜下是否有2个棋子连在一起 
+   	JNE SC41
+   	CMP DL,CHESSBOARD[BX+32]								;判断棋盘斜下是否有3个棋子连在一起
+   	JNE SC42
+   	CMP DL,CHESSBOARD[BX+48]								;判断棋盘斜下是否有4个棋子连在一起
+   	JNE SC43
+   	CMP DL,CHESSBOARD[BX+64]								;判断棋盘斜下是否有5个棋子连在一起
 	JNE SC44
-	MOV SCORE,10000   									;1111,10000分
+	INC CHESSMODEL[8]   									;1111,10000分
 SC41:
 	CMP DH,CHESSBOARD[BX+16]
    	JE SC411
-   	ADD SCORE,2                          ; 0XXX,2分  
+   	INC CHESSMODEL[1]                          ; 0XXX,2分  
    	JMP SC40
 SC411:
-	ADD SCORE,3                          ; 2XXX，3分   
+	INC CHESSMODEL[0]                         ; 2XXX，3分   
 	JMP SC40
 SC42:
    	CMP DH,CHESSBOARD[BX+32]
    	JE SC421
-   	ADD SCORE,10                          ; 10XX,10分
+   	INC CHESSMODEL[3]                          ; 10XX,10分
 SC421:
-	ADD SCORE,5                          ; 12XX,5分
+	INC CHESSMODEL[2]                          ; 12XX,5分
 	JMP SC40
 SC43:
 	CMP DH,CHESSBOARD[BX+48]
 	JE SC431
-	ADD SCORE,200                       ; 110X,200分
+	INC CHESSMODEL[5]                      ; 110X,200分
 	JMP SC40
 SC431:
-	ADD SCORE,8                            ; 112X,8分
+	INC CHESSMODEL[4]                            ; 112X,8分
 	JMP SC40
 SC44:
     CMP DH,CHESSBOARD[BX+64]
 	JE SC441
-	ADD SCORE,1000                        ; 1110,1000分
+	INC CHESSMODEL[7]                       ; 1110,1000分
 SC441:
-	ADD SCORE,100                           ; 1112,100分																		
+	INC CHESSMODEL[6]                           ; 1112,100分																		
 SC40: 
    POP BX
    RET											;子程序结束返回
-SCORE4 ENDP 	 
-
-
+SCORE4 ENDP
+;=========/*判断西方向的棋形*/========
+SCORE5 PROC NEAR
+	PUSH BX
+	CMP Y,4
+	JL SC50
+	CMP DL,CHESSBOARD[BX-1]
+	JNE SC51
+	CMP DL,CHESSBOARD[BX-2]
+	JNE SC52
+	CMP DL,CHESSBOARD[BX-3]
+	JNE SC53
+	CMP DL,CHESSBOARD[BX-4]
+	JNE SC54
+	INC CHESSMODEL[8]  						;1111,10000分
+	JMP SC50
+SC51:
+	CMP DH,CHESSBOARD[BX-1]
+	JE SC511
+	INC CHESSMODEL[1]                          ; 0XXX,2分  
+	JMP SC50
+SC511:
+	INC CHESSMODEL[0]                        ; 2XXX，3分   
+	JMP SC50
+SC52:
+   	CMP DH,CHESSBOARD[BX-2]
+   	JE SC521
+   	INC CHESSMODEL[3]                         ; 10XX,10分
+	JMP SC50
+SC521:
+	INC CHESSMODEL[2]                          ; 12XX,5分
+	JMP SC50
+SC53:
+	CMP DH,CHESSBOARD[BX-3]
+	JE SC531
+	INC CHESSMODEL[5]                      ; 110X,200分
+	JMP SC50
+SC531:
+	INC CHESSMODEL[4]                          ; 112X,8分
+	JMP SC50
+SC54:
+	CMP DH,CHESSBOARD[BX-4]
+	JE SC541
+	INC CHESSMODEL[7]                        ; 1110,1000分
+	JMP SC50
+SC541:
+	INC CHESSMODEL[6]                          ; 1112,100分
+SC50: 
+   POP BX
+   RET											;子程序结束返回
+SCORE5 ENDP
+;=========/*判断北方向的棋形*/========
+SCORE6 PROC NEAR
+	PUSH BX
+	CMP X,4
+	JL SC60
+	CMP DL,CHESSBOARD[BX-15]
+	JNE SC61
+	CMP DL,CHESSBOARD[BX-30]
+	JNE SC62
+	CMP DL,CHESSBOARD[BX-45]
+	JNE SC63
+	CMP DL,CHESSBOARD[BX-60]
+	JNE SC64
+	INC CHESSMODEL[8]  						;1111,10000分
+	JMP SC60
+SC61:
+	CMP DH,CHESSBOARD[BX-15]
+	JE SC611
+	INC CHESSMODEL[1]                          ; 0XXX,2分  
+	JMP SC60
+SC611:
+	INC CHESSMODEL[0]                        ; 2XXX，3分   
+	JMP SC60
+SC62:
+   	CMP DH,CHESSBOARD[BX-30]
+   	JE SC621
+   	INC CHESSMODEL[3]                         ; 10XX,10分
+	JMP SC60
+SC621:
+	INC CHESSMODEL[2]                          ; 12XX,5分
+	JMP SC60
+SC63:
+	CMP DH,CHESSBOARD[BX-45]
+	JE SC631
+	INC CHESSMODEL[5]                      ; 110X,200分
+	JMP SC60
+SC631:	
+	INC CHESSMODEL[4]                          ; 112X,8分
+	JMP SC60
+SC64:	
+	CMP DH,CHESSBOARD[BX-60]
+	JE SC641
+	INC CHESSMODEL[7]                        ; 1110,1000分
+	JMP SC60
+SC641:	
+	INC CHESSMODEL[6]                          ; 1112,100分
+SC60: 
+   POP BX
+   RET											;子程序结束返回
+SCORE6 ENDP
+;=========/*判断西北方向的棋形*/========
+SCORE7 PROC NEAR
+	PUSH BX
+	CMP X,4
+	JL SC70
+	CMP Y,4
+	JL SC70
+	CMP DL,CHESSBOARD[BX-16]
+	JNE SC71
+	CMP DL,CHESSBOARD[BX-32]
+	JNE SC72
+	CMP DL,CHESSBOARD[BX-48]
+	JNE SC73
+	CMP DL,CHESSBOARD[BX-64]
+	JNE SC74
+	INC CHESSMODEL[8]  						;1111,10000分
+	JMP SC70
+SC71:
+	CMP DH,CHESSBOARD[BX-16]
+	JE SC711
+	INC CHESSMODEL[1]                          ; 0XXX,2分  
+	JMP SC70
+SC711:
+	INC CHESSMODEL[0]                        ; 2XXX，3分   
+	JMP SC70
+SC72:
+   	CMP DH,CHESSBOARD[BX-32]
+   	JE SC721
+   	INC CHESSMODEL[3]                         ; 10XX,10分
+	JMP SC70
+SC721:
+	INC CHESSMODEL[2]                          ; 12XX,5分
+	JMP SC70
+SC73:	
+	CMP DH,CHESSBOARD[BX-48]
+	JE SC731
+	INC CHESSMODEL[5]                      ; 110X,200分
+	JMP SC70
+SC731:	
+	INC CHESSMODEL[4]                          ; 112X,8分
+	JMP SC70
+SC74:
+	CMP DH,CHESSBOARD[BX-64]
+	JE SC741
+	INC CHESSMODEL[7]                        ; 1110,1000分
+	JMP SC70
+SC741:
+	INC CHESSMODEL[6]                          ; 1112,100分
+SC70: 
+   POP BX
+   RET											;子程序结束返回
+SCORE7 ENDP
+;=========/*判断西南方向的棋形*/========
+SCORE8 PROC NEAR
+	PUSH BX
+	CMP X,10
+	JG SC80
+	CMP Y,4
+	JL SC80
+	CMP DL,CHESSBOARD[BX+14]
+	JNE SC81
+	CMP DL,CHESSBOARD[BX+28]
+	JNE SC82
+	CMP DL,CHESSBOARD[BX+42]
+	JNE SC83
+	CMP DL,CHESSBOARD[BX+56]
+	JNE SC84
+	INC CHESSMODEL[8]  						;1111,10000分
+	JMP SC80
+SC81:
+	CMP DH,CHESSBOARD[BX+14]
+	JE SC811
+	INC CHESSMODEL[1]                          ; 0XXX,2分  
+	JMP SC80
+SC811:
+	INC CHESSMODEL[0]                        ; 2XXX，3分   
+	JMP SC80
+SC82:
+   	CMP DH,CHESSBOARD[BX+28]
+   	JE SC821
+   	INC CHESSMODEL[3]                         ; 10XX,10分
+	JMP SC80
+SC821:	
+	INC CHESSMODEL[2]                          ; 12XX,5分
+	JMP SC80
+SC83:	
+	CMP DH,CHESSBOARD[BX+42]
+	JE SC831
+	INC CHESSMODEL[5]                      ; 110X,200分
+	JMP SC80
+SC831:
+	INC CHESSMODEL[4]                          ; 112X,8分
+	JMP SC80
+SC84:
+	CMP DH,CHESSBOARD[BX+56]
+	JE SC841
+	INC CHESSMODEL[7]                        ; 1110,1000分
+	JMP SC80
+SC841:
+	INC CHESSMODEL[6]                          ; 1112,100分
+SC80: 
+   POP BX
+   RET											;子程序结束返回
+SCORE8 ENDP
 ;========/*机器落子*/=============
 ROBOTPUTDOWN PROC NEAR
 	PUSH AX										;保存CPU现场
