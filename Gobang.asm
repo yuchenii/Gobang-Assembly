@@ -15,14 +15,13 @@ DATA SEGMENT
     S2 DB 0										;用于保存输入坐标值y
     TEMP DB 1                          	 								;判断该下黑子还是白子，0黑棋，1白棋，默认为1白棋先行
     ORDER DB 1                          								;双机时标志先手or后手，1表示先手，2表示后手
-    MUSTYPE DB 1								;最终音乐类型
 	SCORE DW 1                                  ; 当前位置的分数
 	MAXSCORE DW 0                               ; 当前棋盘最高分数
 	NUMM DW 0									; 已下棋子的个数
 	CHESSMODEL DB 9 DUP(0)						; 棋形
 	CHESSSCORE DW 3,2,5,10,8,200,200,1000,10000 ; 棋形对应的分数
-	TI DB ' 1 2 3 4 5 6 7 8 9 A B C D E F',0AH,0DH,'$'						;棋盘的y坐标
-    ERROR DB 'YOU CANNOT PUT HERE!',0AH,0DH,'$' 						;报错,"你不能放在这里"
+	FIRSTLINE DB ' 1 2 3 4 5 6 7 8 9 A B C D E F','$'						;棋盘的y坐标
+	ERROR DB 'YOU CANNOT PUT HERE!',0AH,0DH,'$' 						;报错,"你不能放在这里"
     WRONG DB 0AH,0DH,'FALSE INPUT!',0AH,0DH,'$'						;错误信息的提示
     COLOR DB 0AH,0DH,'PLEASE CHOOSE YOUR CHESSMAN COLOR:(1 FOR BLACK, 2 FOR WHITE)',0AH,0DH,'$'	;选棋子的颜色，1是黑色，2是白色
     CLEAN DB 72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,'$';更新棋盘
@@ -32,11 +31,15 @@ DATA SEGMENT
     SORRY DB 'YOU LOSE! DONNOT GIVE UP!',0AH,0DH,'$'						;游戏提示信息,"对不起,你输了,不要放弃!"
     WAIT1 DB 'PLEASE WAIT...',0AH,0DH,'$'  							;进入等待信息提示 
     CHOOSE DB 'PLEASE CHOOSE GAME MODEL:(1 FOR ONE PLAYER, 2 FOR TWO PLAYERS, ESC TO QUIT)',0AH,0DH,'$'	;选择游戏的玩法
-    EXIT DB 'ONE PLAYER HAS QUIT!',0AH,0DH,'$'							;一个玩家退出后播放音乐
-    MUS_FREQ DW 270,270,270,190,230,270,250,270,-1								;音乐播放结束符
-    MUS_TIME DW 3 DUP (30),50,50,30,30,80 
-	MUS_FREQ0 DW 230,150,-1
-	MUS_TIME0 DW 30,30 
+    EXIT DB 'ONE PLAYER HAS QUIT!',0AH,0DH,'$'							;一个玩家退出
+	MUSTYPE DB 1								;音乐类型;0报错, 1胜利, 2失败
+    MUS_FREQ0 DW 230,150,-1						;报错音频率
+	MUS_TIME0 DW 30,30							;报错音节拍
+	MUS_FREQ1 DW 270,270,270,190,230,270,250,270,-1					;胜利音乐频率表，-1为音乐播放结束符
+    MUS_TIME1 DW 3 DUP (30),50,50,30,30,80  						;失败音乐节拍
+	MUS_FREQ2 DW 230, 260, 260, 260, 230, 200, 170, -1				;失败音乐频率表，-1为音乐播放结束符
+	MUS_TIME2 DW 50, 30, 30, 30, 30, 30, 50							;失败音乐节拍
+
 DATA ENDS
 INISTACK SEGMENT STACK
 	DW 128H DUP(0)									;初始化堆栈						
@@ -55,6 +58,13 @@ START:
     MOV AL,2
 	MOV AH,0									;设置显示方式
 	INT 10H
+
+	MOV AH, 0BH
+	MOV BH, 00H
+	MOV BL, 00110000B
+	INT 10H
+
+
 SELECT:                                 		;选择功能
     MOV DX,OFFSET CHOOSE                		;选择单机或双机游戏
 	MOV AH,09H									;使用21H中断的设置光标位置功能
@@ -142,7 +152,7 @@ THERE1:
     INT 10H
     MOV STATE,3										;游戏结束我退出
     ;CALL SLED										;数码管显示当前状态
-	MOV MUSTYPE, 1									;修改音乐类型
+	MOV MUSTYPE, 1									;修改音乐类型为胜利
     CALL MUSIC										;播放音乐
 GEND1:
 	MOV AH,4CH									;退出游戏
@@ -163,7 +173,7 @@ GAME2:											; 人机游戏
 	MOV DX,OFFSET WRONG							;显示错误的提示信息
 	MOV AH,09H									;在屏幕上显示输入的内容
 	INT 21H
-	CALL BEEP									;播放提示音
+	CALL BEEP									;调用报错音
 	JMP GAME2									;游戏结束
 SBLACK:                               			;若执黑则后行，将我方棋子改为MY=1，ORDER改为2
     MOV MY,BLACK									; 我执黑棋，对方执白棋
@@ -186,12 +196,8 @@ HERE2:
 	MOV DL,00H									;光标从17,0开始
 	MOV DH,11H									;光标的列坐标
 	INT 10H
-<<<<<<< HEAD
 	;CALL SLED									;数码管显示当前状态
-=======
-	CALL SLED									;数码管显示当前状态	
->>>>>>> b8a3d7984c89fb474e31655eb9ffc938eb31a5f2
-WW:	;TODO 这里发生了死循环
+WW:	
 	CMP STATE,0									;根据STATE输出提示信息
 	JE SHOW										;如果是我下，转至SHOW
 	;TODO 缺少了STATE=1,即应该是对方下的情况
@@ -210,7 +216,7 @@ ROBOT:
 	CALL PRINT									; 打印棋盘
 	CMP OVER,1                                  ; 判断游戏是否结束
 	JE ILOSE									; 机器胜利
-	CALL BEEP									; 播放提示音
+	;CALL MUSIC									; TODO
 	MOV STATE,0									; 机器下完，改变STATE
 	JMP HERE2                                   ; 机器下完我下
 SHOW:
@@ -228,6 +234,7 @@ ILOSE:											;“我输了”的处理程序
 	MOV AH,09H									;在屏幕上显示输入的内容
 	INT 21H
 	;CALL SLED									;数码管显示当前状态
+	MOV MUSTYPE, 2								;修改音乐类型为失败
 	CALL MUSIC									;调用播放音乐
 	JMP GEND2									;游戏结束信息提示
 IQUIT:											;“我退出”的处理程序
@@ -300,7 +307,7 @@ IWIN:											;我赢了则显示祝贺信息并播放音乐
 	INT 10H										;屏幕上显示我胜利的信息
 	MOV STATE,2									;我赢了
 	;CALL SLED									;数码管显示当前状态		
-	MOV MUSTYPE, 1								;音乐类型为胜利音乐				
+	MOV MUSTYPE, 1								;修改音乐类型为胜利				
 	CALL MUSIC									;播放音乐
 GEND2:
 	MOV AH,4CH									;退出游戏
@@ -1206,9 +1213,27 @@ PRINT PROC NEAR									;打印棋盘
     MOV DH,00H										
     INT 10H	
 	;-----打印第一行(x=0)------
-    MOV DX,OFFSET TI							;打印棋盘的Y坐标(即最上面一行)  
-    MOV AH,09H									;显示字符串
-    INT 21H
+	MOV SI, 0
+PRFIRSTL:
+    MOV DX,OFFSET FIRSTLINE						;打印棋盘的Y坐标(即最上面一行)  
+    ;MOV AH,09H									;显示字符串
+    ;INT 21H
+	;-------
+	MOV DL, FIRSTLINE[SI]
+	CMP DL, '$'
+	JE PRNEXT
+	MOV BL, 01100011B
+    CALL MYPRINT
+	INC SI
+	JMP PRFIRSTL
+	;-------
+PRNEXT:
+	MOV AH, 03H									;10H中断; 功能号03获取光标坐标
+	INT 10H										
+	INC DH										
+	XOR DL, DL
+	MOV AH, 02H									;10H中断; 功能号02设置光标坐标
+	INT 10H
 	MOV X,0										;初始化X Y SI
 	MOV Y,0
 	MOV SI,0
@@ -1220,23 +1245,49 @@ LOOP2:
     ADD DL,31H									;将X从坐标(纯数字)转化成对应的ASCII字符
 	CMP DL,'9'									;如果字符是'1'~'9'，直接跳转至PP打印
 	JLE PP
-	ADD DL,39									;如果字符是'a'~...，加上39转化后再打印 
+	ADD DL,7									;如果字符是'A'~...，加上7转化后再打印 
 PP:
-    MOV AH,02H
-    INT 21H										;使用21H中断的输出字符功能
+	MOV BL, 01100011B
+    CALL MYPRINT								
 ;------打印棋盘中间部分-------
 NOTHEAD:
 	;------循环打印每一行-------
     MOV DL,CHESSBOARD[SI]						;Y和SI表示记录所在的列(y坐标)
-    MOV AH,02H									
-	INT 21H										
+    ;MOV AH,02H									
+	;INT 21H
+	;-------
+	MOV AH, 09H									;10H中断; 功能号09实现输出
+	MOV AL, DL									;内容
+	MOV BH, 0									;页号
+	MOV BL, 01100111B							;属性: IRGB|IRGB, 前为背景、后为字体; I表示高亮
+	MOV CX, 1									;打印次数
+	INT 10H										;10H中断; 功能号03获取光标坐标
+	MOV AH, 03H
+	INT 10H										
+	INC DL										;光标后移1位打印下一个字符
+	MOV AH, 02H									;10H中断; 功能号02设置光标坐标
+	INT 10H
+	;-------										
 	INC SI										;打印下一个字符，即Y+=1,SI+=1
 	INC Y										
 	CMP Y,15									;如果到达当前行的末尾，则跳转至换行程序
 	JE NEXTLINE
-	MOV DL,'-'									;否则输出一个'-'
-	MOV AH,02H									;使用21H中断的输出字符功能
-	INT 21H
+	;MOV DL,'-'									;否则输出一个'-'
+	;MOV AH,02H									;使用21H中断的输出字符功能
+	;INT 21H
+	;----
+	MOV AH, 09H									;10H中断; 功能号09实现输出
+	MOV AL, '-'									;内容
+	MOV BH, 0									;页号
+	MOV BL, 01100111B							;属性: IRGB|IRGB, 前为背景、后为字体; I表示高亮
+	MOV CX, 1									;打印次数
+	INT 10H										;10H中断; 功能号03获取光标坐标
+	MOV AH, 03H
+	INT 10H										
+	INC DL										;光标后移1位打印下一个字符
+	MOV AH, 02H									;10H中断; 功能号02设置光标坐标
+	INT 10H
+	;----
 	JMP LOOP2									;回到循环2
 NEXTLINE:
 	;-------换行-------
@@ -1330,12 +1381,17 @@ MUSIC PROC NEAR
     ;MOV AX, INISTACK
     ;MOV SS, AX
     ;MOV SP, 300
-	CMP MUSTYPE,1						;判断音乐类型
+	CMP MUSTYPE, 1						;判断音乐类型
 	JE MUS_T1
+	CMP MUSTYPE, 2
+	JE MUS_T2
 	ADDRESS MUS_FREQ0, MUS_TIME0		;取音乐0的地址
 	JMP MUSSTT
 MUS_T1:
-	ADDRESS MUS_FREQ, MUS_TIME			;取音乐1的地址
+	ADDRESS MUS_FREQ1, MUS_TIME1			;取音乐1的地址
+	JMP MUSSTT
+MUS_T2:
+	ADDRESS MUS_FREQ2, MUS_TIME2
 MUSSTT:									;初始化完成，开始播放工作
     XOR AX, AX
 FREG:
@@ -1441,8 +1497,8 @@ YY:
     CALL PRINT										;打印棋盘
     MOV MY,1										;我的坐标是1
     mov state,0										;游戏正在进行中
-    ;call sled      										;数码管显示当前状态                                             
-    JMP CLE										;棋盘屏幕更新
+    ;call sled      								;数码管显示当前状态                                             
+    JMP CLE											;棋盘屏幕更新
 L7: 
     MOV MY,1										;我的坐标是1，对方的坐标是2
     call check										;检查落子是否合法
@@ -1469,5 +1525,27 @@ CLE:
 	POP AX
 	IRET										;中断返回
 IRQ11 ENDP
+;=======自定义打印程序=========
+;输入参数: BL为打印的属性
+;输入参数: DL为打印的字符
+MYPRINT PROC NEAR							
+	PUSH AX
+	PUSH CX
+	MOV AH, 09H									;10H中断; 功能号09实现输出
+	MOV AL, DL									;内容
+	MOV BL, BL									;属性: IRGB|IRGB, 前为背景、后为字体; I表示高亮
+	MOV BH, 0									;页号
+	MOV CX, 1									;打印次数
+	INT 10H										
+	MOV AH, 03H									;10H中断; 功能号03获取光标坐标
+	INT 10H										
+	INC DL										;光标后移1位打印下一个字符
+	MOV AH, 02H									;10H中断; 功能号02设置光标坐标
+	INT 10H
+	POP CX
+	POP AX
+	RET
+MYPRINT ENDP
+
 CODE ENDS
 	END START	
