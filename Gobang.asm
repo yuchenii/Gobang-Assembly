@@ -5,18 +5,23 @@ DATA SEGMENT
 	X DB 0										;落子坐标 x
 	Y DB 0                                       ;落子坐标 y
 	MY DB 1										; 自己的棋子颜色，1黑棋 2白棋
-	FLAG DB 0									;判断是否可以落子的标记，1为可以，0为不可以
+	FLAG DB 0									; 判断是否可以落子的标记，1为可以，0为不可以
 	STATE DB 0									;目前的状态，单机：0为游戏进行中，2为一方退出；3为一方获胜
 											;0该我下，1我已经下完，等待接受X；2等待接受Y；4对方获胜，5对方退出
 	OVER DB 0									;判断是否比赛结束，CALL ISWIN 0为没有结束，1为结束。结束时，最后落子方获胜
 	LED DB 3FH,06H,5BH,4FH,66H,6DH,7DH,07H,7FH,6FH     					;七段数码管对应显示
     S1 DB 0                             									;用于保存输入坐标值x
     S2 DB 0										;用于保存输入坐标值y
-    TEMP DB 1                          	 								;判断该下黑子还是白子，0黑棋，1白棋，默认为1白棋先行
-    ORDER DB 1                          								;双机时标志先手or后手，1表示先手，2表示后手
+    TEMP DB 1                          	 		;判断该下黑子还是白子，0黑棋，1白棋，默认为1白棋先行
+    ORDER DB 1                          		;双机时标志先手or后手，1表示先手，2表示后手
     MUSTYPE DB 1								;最终音乐类型
 	SCORE DW 1                                  ; 当前位置的分数
 	MAXSCORE DW 0                               ; 当前棋盘最高分数
+	MAXSCORE1 DW 0                              ; 第一层网络最高分数
+	MAXSCORE2 DW 0                              ; 第二层网络最高分数
+	X1 DB 0                                     ; 第一层网络最高分数的坐标x
+	Y1 DB 0                                     ; 第一层网络最高分数的坐标y
+	CB1 DB 197  								; X1,Y1对应的棋盘缓冲区的值
 	NUMM DW 0									; 已下棋子的个数
 	CHESSMODEL DB 9 DUP(0)						; 棋形
 	CHESSSCORE DW 3,2,5,10,8,200,200,1000,10000 ; 棋形对应的分数
@@ -487,38 +492,67 @@ FINDPLACE PROC NEAR
 	PUSH BX
 	PUSH CX
 	PUSH DX
-	MOV X,0
+	MOV X,1
 	MOV Y,0
+	MOV X1,0
+	MOV Y1,0
 	MOV SCORE,1                                 ;初始化分数
-	MOV MAXSCORE,0							  ;初始化最大分数
+	MOV AX,20000
+	NEG AX
+	MOV MAXSCORE1,AX							  ;初始化最大分数
+	CMP MY,1        ; 判断机器黑棋还是白棋
+    JE MYBLACK
+	MOV DL,BLACK    ; 机器是黑棋
+	MOV DH,WHITE    ; 玩家是白棋
+    JMP ISFIRST
+MYBLACK:
+    MOV DL,WHITE    ; 机器是白棋
+	MOV DH,BLACK    ; 玩家是黑棋
+ISFIRST:
 	CMP NUMM,0                                 ; 判断是不是首颗棋子
 	JNE FIND                                   ; 不是首颗棋子，跳转到FIND
 	MOV BL,7                                   ; 是首颗棋子，则下正中间的位置
 	MOV BH,7
 	JMP HASFIND                                ; 已经找到落子位置，跳转到HASFIND
 FIND:
-    CMP MY,1
+	MOV AL,X                                   
+	MOV X1,AL                                  ; 临时保存现在的坐标x到x1
+	MOV AL,Y
+	MOV Y1,AL                                  ; 临时保存现在的坐标y到y1
 	MOV FLAG,1
 	CALL CHECKPLACE 						    ; 调用检查子程序
 	CMP FLAG,0                                  ; 如果不能落子
     JE NEXTY                                    ; 则继续寻找
 	MOV SCORE,1                               ; 重置分数
 	CALL CALSCORE							    ; 计算当前位置分数
-	MOV CX,MAXSCORE
-	CMP SCORE,CX						    
+	MOV AX,SCORE
+	XCHG DL,DH                                 ; 第二层网络交换要计算的颜色
+	CALL FINDPLACE2
+	XCHG DL,DH                                 ; 第二层网络计算完分数后换回来
+	CMP MAXSCORE2,10000
+	JGE BELOWMAXSCORE2
+	SUB AX,MAXSCORE2
+	CMP AX,MAXSCORE1						    
     JLE NEXTY									; 如果当前位置分数小于最高分数,则继续
-	MOV CX,SCORE
-	MOV MAXSCORE,CX								; 如果当前位置分数大于最高分数,则替换最高分数
-	MOV BL,X                                 ; 保存当前最高分数的位置x
-	MOV BH,Y                                  ; 保存当前最高分数的位置y
+	MOV MAXSCORE1,AX								; 如果当前位置分数大于最高分数,则替换最高分数
+	MOV BL,X1                                 ; 保存当前最高分数的位置x1
+	MOV BH,Y1                                  ; 保存当前最高分数的位置y1
 NEXTY:
+    MOV AL,X1
+	MOV X,AL
+	MOV AL,Y1
+	MOV Y,AL
     INC Y                                   ; 右移一位
 	CMP Y,15
     JNE FIND
-	MOV Y,2                                ; 从头开始
+	MOV Y,0                                ; 从头开始
 	INC X                                  ; 下面一行
 	CMP X,15                               ; 判断是否已经到达最后一行
 	JNE FIND                               ; 如果没有到达最后一行,则继续
+    JMP HASFIND
+BELOWMAXSCORE2:
+	MOV BL,X
+	MOV BH,Y
 HASFIND:
 	MOV X,BL                               ; 保存最高分数的位置x
 	MOV Y,BH                               ; 保存最高分数的位置y
@@ -527,13 +561,68 @@ HASFIND:
 	POP BX
 	POP AX
 	RET
-FINDPLACE ENDP	 
+FINDPLACE ENDP
+;=====/*第二层网络*/=======
+FINDPLACE2 PROC NEAR
+	PUSH AX										;保存CPU现场
+	PUSH BX
+	PUSH CX
+	PUSH DX
+	MOV AX,0
+	MOV BX,0
+	MOV AL,X1
+	MOV BL,15
+	MUL BL
+	ADD AL,Y1
+	MOV BX,AX
+	MOV AL,CHESSBOARD[BX]
+	MOV CB1,AL             ; 保存第一层网络落子的位置棋子的内容
+	MOV CHESSBOARD[BX],DH             ; 修改第一层网络落子的位置的颜色
+	MOV X,1
+	MOV Y,0
+	MOV AX,0
+	MOV SCORE,1                                 ;初始化分数
+	MOV MAXSCORE2,0							  ;初始化最大分数
+FIND2:
+	MOV FLAG,1
+	CALL CHECKPLACE 						    ; 调用检查子程序
+	CMP FLAG,0                                  ; 如果不能落子
+    JE NEXTY2                                    ; 则继续寻找
+	MOV SCORE,1                               ; 重置分数
+	CALL CALSCORE							    ; 计算当前位置分数
+	MOV CX,MAXSCORE2
+	CMP SCORE,CX						    
+    JLE NEXTY2									; 如果当前位置分数小于最高分数,则继续
+	MOV CX,SCORE
+	MOV MAXSCORE2,CX								; 如果当前位置分数大于最高分数,则替换最高分数
+	MOV AL,X                                 ; 保存当前最高分数的位置x
+	MOV AH,Y                                  ; 保存当前最高分数的位置y
+NEXTY2:
+    INC Y                                   ; 右移一位
+	CMP Y,15
+    JNE FIND2
+	MOV Y,0                                ; 从头开始
+	INC X                                  ; 下面一行
+	CMP X,15                               ; 判断是否已经到达最后一行
+	JNE FIND2                               ; 如果没有到达最后一行,则继续
+HASFIND2:
+	MOV X,AL                               ; 保存最高分数的位置x
+	MOV Y,AH                               ; 保存最高分数的位置y
+	MOV AL,CB1
+	MOV CHESSBOARD[BX],AL                  ; 还原
+    POP DX									;恢复CPU现场
+	POP CX
+	POP BX
+	POP AX
+	RET
+FINDPLACE2 ENDP
 ;=====/*检查机器落子位置是否合法*/=======
 CHECKPLACE PROC NEAR
 	PUSH AX										;保存CPU现场
 	PUSH BX
 	PUSH CX
 	PUSH DX
+	MOV FLAG,1
 	CMP X,0
 	JL INPUTERR
 	CMP X,14
@@ -542,48 +631,38 @@ CHECKPLACE PROC NEAR
 	JL INPUTERR
 	CMP Y,14
 	JG INPUTERR
-	MOV CX,0								; 传送指令
-	MOV CL,X
-	MOV BX,0								; 清空寄存器
-MULX5: 
-    ADD BL,15										;棋子右移15单位
-    LOOP MULX5										;循环MULX1
-	ADD BL,Y										;棋子右移输入Y的值
+	MOV AX,0
+	MOV BX,0
+	MOV AL,X
+	MOV BL,15
+	MUL BL
+	ADD AL,Y
+	MOV BX,AX									;棋子右移输入Y的值
 	CMP CHESSBOARD[BX],BLACK                 			   ;若此处已有棋子，输入不合法
 	JE INPUTERR							;
 	CMP CHESSBOARD[BX],WHITE								;若此处没有棋子，输入合法
 	JNE FINISHCHECK
 INPUTERR:
     MOV FLAG,0                           		; 对于不合法的输入，显示错误信息，并鸣响扬声器
-	MOV DX,OFFSET WAIT1							;应该是对方下，提示等待
-	MOV AH,09H
-	INT 21H										;输出请等待的信息
-FINISHCHECK:
-    POP DX										;恢复CPU现场										
+	; MOV DX,OFFSET WAIT1							;应该是对方下，提示等待
+	; MOV AH,09H
+	; INT 21H										;输出请等待的信息
+FINISHCHECK:					
+    POP DX 										;恢复CPU现场										
 	POP CX                                    
 	POP BX
 	POP AX
 	RET
 CHECKPLACE ENDP
-;=====/*计算当前位置分数*/=======
+;=====/*计算当前位置分数*/======= DL需要存当前位置要算的棋子的颜色，DH存另一棋子的颜色
 CALSCORE PROC NEAR
 	PUSH AX										;保存CPU现场
 	PUSH BX
 	PUSH CX
 	PUSH DX
-	MOV DX,0
     MOV BX,0
 	MOV CX,0
 	MOV CL,X        ; 第x行
-	CMP MY,1        ; 判断机器黑棋还是白棋
-    JE MYBLACK
-	MOV DL,BLACK    ; 机器是黑棋
-	MOV DH,WHITE    ; 玩家是白棋
-    JMP MULX7
-MYBLACK:
-    MOV DL,WHITE    ; 机器是白棋
-	MOV DH,BLACK    ; 玩家是黑棋
-    JMP MULX7
 MULX7:
     ADD BL,15      ; 下移一行
 	LOOP MULX7	   ; 直到第x行								
