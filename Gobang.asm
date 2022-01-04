@@ -1,3 +1,4 @@
+;TODO 彩色
 DATA SEGMENT
 	BLACK EQU 1          ; 黑棋
 	WHITE EQU 2          ; 白棋
@@ -5,7 +6,7 @@ DATA SEGMENT
 	X DB 0										;落子坐标 x
 	Y DB 0                                       ;落子坐标 y
 	MY DB 1										; 自己的棋子颜色，1黑棋 2白棋
-	FLAG DB 0									;判断是否可以落子的标记，1为可以，0为不可以
+	FLAG DB 0									; 判断是否可以落子的标记，1为可以，0为不可以
 	STATE DB 0									;目前的状态，单机：0为游戏进行中，2为一方退出；3为一方获胜
 											;0该我下，1我已经下完，等待接受X；2等待接受Y；4对方获胜，5对方退出
 	OVER DB 0									;判断是否比赛结束，CALL ISWIN 0为没有结束，1为结束。结束时，最后落子方获胜
@@ -14,12 +15,17 @@ DATA SEGMENT
     S2 DB 0										;用于保存输入坐标值y
     TEMP DB 1                          	 								;判断该下黑子还是白子，0黑棋，1白棋，默认为1白棋先行
     ORDER DB 1                          								;双机时标志先手or后手，1表示先手，2表示后手
-    MUSTYPE DB 1								;最终音乐类型
 	SCORE DW 1                                  ; 当前位置的分数
-	MAXSCORE DW 0                               ; 当前棋盘最高分数
+	MAXSCORE1 DW 0                              ; 第一层网络最高分数
+	MAXSCORE2 DW 0                              ; 第二层网络最高分数
+	X1 DB 0                                     ; 第一层网络最高分数的坐标x
+	Y1 DB 0                                     ; 第一层网络最高分数的坐标y
+	CB1 DB 197  								; X1,Y1对应的棋盘缓冲区的值
 	NUMM DW 0									; 已下棋子的个数
-	TI DB ' 1 2 3 4 5 6 7 8 9 A B C D E F',0AH,0DH,'$'						;棋盘的y坐标
-    ERROR DB 'YOU CANNOT PUT HERE!',0AH,0DH,'$' 						;报错,"你不能放在这里"
+	CHESSMODEL DB 9 DUP(0)						; 棋形
+	CHESSSCORE DW 3,2,5,10,8,200,200,1000,10000 ; 棋形对应的分数
+	FIRSTLINE DB ' 1 2 3 4 5 6 7 8 9 A B C D E F','$'						;棋盘的y坐标
+	ERROR DB 'YOU CANNOT PUT HERE!',0AH,0DH,'$' 						;报错,"你不能放在这里"
     WRONG DB 0AH,0DH,'FALSE INPUT!',0AH,0DH,'$'						;错误信息的提示
     COLOR DB 0AH,0DH,'PLEASE CHOOSE YOUR CHESSMAN COLOR:(1 FOR BLACK, 2 FOR WHITE)',0AH,0DH,'$'	;选棋子的颜色，1是黑色，2是白色
     CLEAN DB 72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,'$';更新棋盘
@@ -29,11 +35,15 @@ DATA SEGMENT
     SORRY DB 'YOU LOSE! DONNOT GIVE UP!',0AH,0DH,'$'						;游戏提示信息,"对不起,你输了,不要放弃!"
     WAIT1 DB 'PLEASE WAIT...',0AH,0DH,'$'  							;进入等待信息提示 
     CHOOSE DB 'PLEASE CHOOSE GAME MODEL:(1 FOR ONE PLAYER, 2 FOR TWO PLAYERS, ESC TO QUIT)',0AH,0DH,'$'	;选择游戏的玩法
-    EXIT DB 'ONE PLAYER HAS QUIT!',0AH,0DH,'$'							;一个玩家退出后播放音乐
-    MUS_FREQ DW 270,270,270,190,230,270,250,270,-1								;音乐播放结束符
-    MUS_TIME DW 3 DUP (30),50,50,30,30,80 
-	MUS_FREQ0 DW 230,150,-1
-	MUS_TIME0 DW 30,30 
+    EXIT DB 'ONE PLAYER HAS QUIT!',0AH,0DH,'$'							;一个玩家退出
+	MUSTYPE DB 1								;音乐类型;0报错, 1胜利, 2失败
+    MUS_FREQ0 DW 230,150,-1						;报错音频率
+	MUS_TIME0 DW 30,30							;报错音节拍
+	MUS_FREQ1 DW 270,270,270,190,230,270,250,270,-1					;胜利音乐频率表，-1为音乐播放结束符
+    MUS_TIME1 DW 3 DUP (30),50,50,30,30,80  						;失败音乐节拍
+	MUS_FREQ2 DW 230, 260, 260, 260, 230, 200, 170, -1				;失败音乐频率表，-1为音乐播放结束符
+	MUS_TIME2 DW 50, 30, 30, 30, 30, 30, 50							;失败音乐节拍
+
 DATA ENDS
 INISTACK SEGMENT STACK
 	DW 128H DUP(0)									;初始化堆栈						
@@ -44,6 +54,16 @@ ADDRESS MACRO A,B
      LEA BP,DS:B
 ENDM
 
+GET_CB_ADDRESS MACRO A,B
+	MOV AX,0
+	MOV BX,0
+	MOV AL,A
+	MOV BL,15
+	MUL BL
+	ADD AL,B
+	MOV BX,AX
+ENDM
+
 CODE SEGMENT
 	ASSUME CS:CODE,DS:DATA,SS:INISTACK							;说明一个对应的关系，之后再把段的首地址赋值给段寄存器
 START:
@@ -52,6 +72,13 @@ START:
     MOV AL,2
 	MOV AH,0									;设置显示方式
 	INT 10H
+
+	MOV AH, 0BH
+	MOV BH, 00H
+	MOV BL, 00110000B
+	INT 10H
+
+
 SELECT:                                 		;选择功能
     MOV DX,OFFSET CHOOSE                		;选择单机或双机游戏
 	MOV AH,09H									;使用21H中断的设置光标位置功能
@@ -79,7 +106,7 @@ GAME1:
 	INT 10H										;设置80*25黑白方式，清空屏幕
 	CALL INITIAL								;初始化计数器
 	CALL PRINT									;打印棋盘
-	CALL SLED                           		;数码管显示当前状态
+	;CALL SLED                           		;数码管显示当前状态
 HERE1:
 	MOV DX,OFFSET PUT							;放置棋子的提示语句
 	MOV AH,09H									;在屏幕上显示输入的内容
@@ -94,7 +121,7 @@ QUIT:											;退出游戏的信息
 	MOV DX,OFFSET EXIT							;有人退出就显示退出消息
 	MOV AH,09H									;使用21H号中断的显示输入功能
 	INT 21H 
-	CALL SLED									;数码管显示当前状态
+	;CALL SLED									;数码管显示当前状态
 	JMP GEND1									;游戏结束
 MARK:											;TODO待删
     JMP GAME2									;进行下一局游戏
@@ -138,8 +165,8 @@ THERE1:
     MOV DH,11H										;设置光标的列坐标
     INT 10H
     MOV STATE,3										;游戏结束我退出
-    CALL SLED										;数码管显示当前状态
-	MOV MUSTYPE, 1									;修改音乐类型
+    ;CALL SLED										;数码管显示当前状态
+	MOV MUSTYPE, 1									;修改音乐类型为胜利
     CALL MUSIC										;播放音乐
 GEND1:
 	MOV AH,4CH									;退出游戏
@@ -160,7 +187,7 @@ GAME2:											; 人机游戏
 	MOV DX,OFFSET WRONG							;显示错误的提示信息
 	MOV AH,09H									;在屏幕上显示输入的内容
 	INT 21H
-	CALL BEEP									;播放提示音
+	CALL BEEP									;调用报错音
 	JMP GAME2									;游戏结束
 SBLACK:                               			;若执黑则后行，将我方棋子改为MY=1，ORDER改为2
     MOV MY,BLACK									; 我执黑棋，对方执白棋
@@ -172,7 +199,7 @@ SWHITE:											;若执白先行，将我方棋子改为白MY=2，ORDER改为1
 	INT 10H										;设置80*25黑白方式，清空屏幕
 	CALL INITIAL								;初始化计数器和通信
 	CALL PRINT									;打印棋盘
-	CALL SLED									;数码管显示当前状态
+	;CALL SLED									;数码管显示当前状态
 HERE2:
 	CMP STATE,0									;根据STATE输出提示信息
 	JE SHOW										;应该是我下，跳转至SHOW
@@ -183,8 +210,8 @@ HERE2:
 	MOV DL,00H									;光标从17,0开始
 	MOV DH,11H									;光标的列坐标
 	INT 10H
-	CALL SLED									;数码管显示当前状态	
-WW:	;TODO 这里发生了死循环
+	;CALL SLED									;数码管显示当前状态
+WW:	
 	CMP STATE,0									;根据STATE输出提示信息
 	JE SHOW										;如果是我下，转至SHOW
 	;TODO 缺少了STATE=1,即应该是对方下的情况
@@ -203,14 +230,14 @@ ROBOT:
 	CALL PRINT									; 打印棋盘
 	CMP OVER,1                                  ; 判断游戏是否结束
 	JE ILOSE									; 机器胜利
-	CALL BEEP									; 播放提示音
+	;CALL MUSIC									; TODO
 	MOV STATE,0									; 机器下完，改变STATE
 	JMP HERE2                                   ; 机器下完我下
 SHOW:
 	MOV DX,OFFSET PUT							;提示落子信息
 	MOV AH,09H									;在屏幕上显示输入的内容
 	INT 21H
-    CALL SLED									;数码管显示当前状态
+    ;CALL SLED									;数码管显示当前状态
 	MOV AH,1									;若输入的是ESC则退出
 	INT 21H
 	CMP AL,27									;若输入的是ESC
@@ -220,7 +247,8 @@ ILOSE:											;“我输了”的处理程序
 	MOV DX,OFFSET SORRY							;提示抱歉信息
 	MOV AH,09H									;在屏幕上显示输入的内容
 	INT 21H
-	CALL SLED									;数码管显示当前状态
+	;CALL SLED									;数码管显示当前状态
+	MOV MUSTYPE, 2								;修改音乐类型为失败
 	CALL MUSIC									;调用播放音乐
 	JMP GEND2									;游戏结束信息提示
 IQUIT:											;“我退出”的处理程序
@@ -230,7 +258,7 @@ HQUIT:											;“对方退出”的处理程序
 	MOV DX,OFFSET EXIT							;有人退出就显示退出消息
 	MOV AH,09H									;在屏幕上显示对方退出的信息
 	INT 21H
-	CALL SLED									;数码管显示当前状态
+	;CALL SLED									;数码管显示当前状态
 	JMP GEND2									;游戏结束信息提示
 RXY2:											;记录坐标X Y(ASCII码)
 	MOV X,AL									;显示x的坐标在屏幕上					
@@ -281,7 +309,7 @@ L3:
 	CMP OVER,1									;判断我是否赢了
 	JE IWIN										;跳转到IWIN子程序
 	MOV STATE,1									;否则将STATE置1，表示我已下完，等待对方的X
-	CALL SLED									;数码管显示当前状态
+	;CALL SLED									;数码管显示当前状态
 	JMP HERE2
 IWIN:											;我赢了则显示祝贺信息并播放音乐
 	MOV DX,OFFSET CONGRA								;祝贺信息显示
@@ -292,8 +320,8 @@ IWIN:											;我赢了则显示祝贺信息并播放音乐
 	MOV DH,10H									;光标的列坐标
 	INT 10H										;屏幕上显示我胜利的信息
 	MOV STATE,2									;我赢了
-	CALL SLED									;数码管显示当前状态		
-	MOV MUSTYPE, 1								;音乐类型为胜利音乐				
+	;CALL SLED									;数码管显示当前状态		
+	MOV MUSTYPE, 1								;修改音乐类型为胜利				
 	CALL MUSIC									;播放音乐
 GEND2:
 	MOV AH,4CH									;退出游戏
@@ -397,13 +425,7 @@ SUBXY:
 	MOV Y,AL                                ; 将改变后的 AL 放入 Y
     SUB X,'1'                            	; 将X改变为真实的值
 	SUB Y,'1'								; 将Y改变为真实的值
-	MOV CX,0								; 传送指令
-	MOV CL,X
-	MOV BX,0								; 清空寄存器
-MULX1: 
-    ADD BL,15										;棋子右移15单位
-    LOOP MULX1										;循环MULX1
-	ADD BL,Y										;棋子右移输入Y的值
+	GET_CB_ADDRESS X,Y                           ; 获取点X,Y的地址,放到BX
 	CMP CHESSBOARD[BX],BLACK                 			   ;若此处已有棋子，输入不合法
 	JE MYERR							;
 	CMP CHESSBOARD[BX],WHITE								;若此处没有棋子，输入合法
@@ -427,13 +449,7 @@ PUTDOWN1 PROC NEAR									;单机落子的信息提示
 	PUSH BX
 	PUSH CX
 	PUSH DX
-	MOV CX,0									;字符指针初始化
-	MOV CL,X
-	MOV BX,0									;清空寄存器
-MULX2: 
-	ADD BL,15									;字符指针右移15个字节
-	LOOP MULX2									;循环MULX2
-	ADD BL,Y										;字符指针右移Y个字节
+    GET_CB_ADDRESS X,Y                           ; 获取点X,Y的地址,放到BX
 	CMP TEMP,0                         	 							;根据TEMP值，轮流放置黑子和白子
 	JE MM1
 	MOV CHESSBOARD[BX],WHITE								; 放白棋
@@ -456,13 +472,7 @@ PUTDOWN2 PROC NEAR									;双机落子的信息提示
 	PUSH BX
 	PUSH CX
 	PUSH DX
-	MOV CX,0									;字符指针初始化
-	MOV CL,X	
-	MOV BX,0									;清空寄存器
-MULX4: 
-	ADD BL,15									;字符指针右移15个字节
-	LOOP MULX4									;循环MULX4
-	ADD BL,Y										;字符指针右移Y个字节
+    GET_CB_ADDRESS X,Y                           ; 获取点X,Y的地址,放到BX
 	CMP MY,1									; 判断我是白棋还是黑棋
 	JE MM2
 	MOV CHESSBOARD[BX],WHITE								;放置白棋
@@ -485,38 +495,69 @@ FINDPLACE PROC NEAR
 	PUSH BX
 	PUSH CX
 	PUSH DX
-	MOV X,2
-	MOV Y,2
+	MOV X,0
+	MOV Y,0
+	MOV X1,0
+	MOV Y1,0
 	MOV SCORE,1                                 ;初始化分数
-	MOV MAXSCORE,0							  ;初始化最大分数
+	MOV AX,20000
+	NEG AX
+	MOV MAXSCORE1,AX							  ;初始化最大分数
+	CMP MY,1        ; 判断机器黑棋还是白棋
+    JE MYBLACK
+	MOV DL,BLACK    ; 机器是黑棋
+	MOV DH,WHITE    ; 玩家是白棋
+    JMP ISFIRST
+MYBLACK:
+    MOV DL,WHITE    ; 机器是白棋
+	MOV DH,BLACK    ; 玩家是黑棋
+ISFIRST:
 	CMP NUMM,0                                 ; 判断是不是首颗棋子
 	JNE FIND                                   ; 不是首颗棋子，跳转到FIND
 	MOV BL,7                                   ; 是首颗棋子，则下正中间的位置
 	MOV BH,7
 	JMP HASFIND                                ; 已经找到落子位置，跳转到HASFIND
 FIND:
-    CMP MY,1
+	MOV AL,X                                   
+	MOV X1,AL                                  ; 临时保存现在的坐标x到x1
+	MOV AL,Y
+	MOV Y1,AL                                  ; 临时保存现在的坐标y到y1
 	MOV FLAG,1
 	CALL CHECKPLACE 						    ; 调用检查子程序
 	CMP FLAG,0                                  ; 如果不能落子
     JE NEXTY                                    ; 则继续寻找
 	MOV SCORE,1                               ; 重置分数
 	CALL CALSCORE							    ; 计算当前位置分数
-	MOV CX,MAXSCORE
-	CMP SCORE,CX						    
-    JLE NEXTY									; 如果当前位置分数小于最高分数,则继续
-	MOV CX,SCORE
-	MOV MAXSCORE,CX								; 如果当前位置分数大于最高分数,则替换最高分数
-	MOV BL,X                                 ; 保存当前最高分数的位置x
-	MOV BH,Y                                  ; 保存当前最高分数的位置y
+	CMP SCORE,10000                             ; 若有五连
+	JGE ENDFIND                                 ; 结束寻找
+	MOV AX,SCORE
+	XCHG DL,DH                                 ; 第二层网络交换要计算的颜色
+	CALL FINDPLACE2
+	XCHG DL,DH                                 ; 第二层网络计算完分数后换回来
+	; CMP MAXSCORE2,10000                         ; 如果有五连
+	; JGE ENDFIND                                 ; 结束寻找
+	SUB AX,MAXSCORE2                            ; 第一层的分数减去第二层的最大分数，即为当前位置的分数
+	CMP AX,MAXSCORE1						    
+    JLE NEXTY									; 如果当前位置分数小于最高分数,则继续寻找
+	MOV MAXSCORE1,AX							; 如果当前位置分数大于最高分数,则替换最高分数
+	MOV BL,X1                                	; 保存当前最高分数的位置x1
+	MOV BH,Y1                                   ; 保存当前最高分数的位置y1
 NEXTY:
+    MOV AL,X1
+	MOV X,AL
+	MOV AL,Y1
+	MOV Y,AL
     INC Y                                   ; 右移一位
-	CMP Y,13
+	CMP Y,15
     JNE FIND
-	MOV Y,2                                ; 从头开始
+	MOV Y,0                                ; 从头开始
 	INC X                                  ; 下面一行
-	CMP X,13                               ; 判断是否已经到达最后一行
+	CMP X,15                               ; 判断是否已经到达最后一行
 	JNE FIND                               ; 如果没有到达最后一行,则继续
+    JMP HASFIND
+ENDFIND:
+	MOV BL,X
+	MOV BH,Y
 HASFIND:
 	MOV X,BL                               ; 保存最高分数的位置x
 	MOV Y,BH                               ; 保存最高分数的位置y
@@ -525,13 +566,69 @@ HASFIND:
 	POP BX
 	POP AX
 	RET
-FINDPLACE ENDP	 
+FINDPLACE ENDP
+;=====/*第二层网络*/=======
+FINDPLACE2 PROC NEAR
+	PUSH AX										;保存CPU现场
+	PUSH BX
+	PUSH CX
+	PUSH DX
+	GET_CB_ADDRESS X1,Y1   			  ; 获取点X1,Y1的地址,放到BX
+	MOV AX,0
+	MOV AL,CHESSBOARD[BX]
+	MOV CB1,AL                         ; 保存第一层网络落子的位置棋子的内容
+	MOV CHESSBOARD[BX],DH             ; 修改第一层网络落子的位置的颜色
+	MOV X,0
+	MOV Y,0
+	MOV AX,0
+	MOV SCORE,1                                 ;初始化分数
+	MOV MAXSCORE2,0							  ;初始化最大分数
+FIND2:
+	MOV FLAG,1
+	CALL CHECKPLACE 						    ; 调用检查子程序
+	CMP FLAG,0                                  ; 如果不能落子
+    JE NEXTY2                                    ; 则继续寻找
+	MOV SCORE,1                               ; 重置分数
+	CALL CALSCORE							    ; 计算当前位置分数
+	MOV CX,SCORE
+	CMP CX,10000
+	JGE ENDFIND2
+	CMP CX,MAXSCORE2						    
+    JLE NEXTY2									; 如果当前位置分数小于最高分数,则继续
+	MOV MAXSCORE2,CX								; 如果当前位置分数大于最高分数,则替换最高分数
+	MOV AL,X                                 ; 保存当前最高分数的位置x
+	MOV AH,Y                                  ; 保存当前最高分数的位置y
+NEXTY2:
+    INC Y                                   ; 右移一位
+	CMP Y,15
+    JNE FIND2
+	MOV Y,0                                ; 从头开始
+	INC X                                  ; 下面一行
+	CMP X,15                               ; 判断是否已经到达最后一行
+	JNE FIND2                               ; 如果没有到达最后一行,则继续
+	JMP HASFIND2
+ENDFIND2:
+	MOV AL,X
+	MOV AH,Y
+	MOV MAXSCORE2,10000
+HASFIND2:
+	MOV X,AL                               ; 保存最高分数的位置x
+	MOV Y,AH                               ; 保存最高分数的位置y
+	MOV AL,CB1
+	MOV CHESSBOARD[BX],AL                  ; 还原
+    POP DX									;恢复CPU现场
+	POP CX
+	POP BX
+	POP AX
+	RET
+FINDPLACE2 ENDP
 ;=====/*检查机器落子位置是否合法*/=======
 CHECKPLACE PROC NEAR
 	PUSH AX										;保存CPU现场
 	PUSH BX
 	PUSH CX
 	PUSH DX
+	MOV FLAG,1
 	CMP X,0
 	JL INPUTERR
 	CMP X,14
@@ -540,72 +637,81 @@ CHECKPLACE PROC NEAR
 	JL INPUTERR
 	CMP Y,14
 	JG INPUTERR
-	MOV CX,0								; 传送指令
-	MOV CL,X
-	MOV BX,0								; 清空寄存器
-MULX5: 
-    ADD BL,15										;棋子右移15单位
-    LOOP MULX5										;循环MULX1
-	ADD BL,Y										;棋子右移输入Y的值
+	GET_CB_ADDRESS X,Y                           ; 获取点X,Y的地址,放到BX
 	CMP CHESSBOARD[BX],BLACK                 			   ;若此处已有棋子，输入不合法
-	JE INPUTERR							;
+	JE INPUTERR							
 	CMP CHESSBOARD[BX],WHITE								;若此处没有棋子，输入合法
 	JNE FINISHCHECK
 INPUTERR:
     MOV FLAG,0                           		; 对于不合法的输入，显示错误信息，并鸣响扬声器
-	MOV DX,OFFSET WAIT1							;应该是对方下，提示等待
-	MOV AH,09H
-	INT 21H										;输出请等待的信息
-FINISHCHECK:
-    POP DX										;恢复CPU现场										
+	; MOV DX,OFFSET WAIT1							;应该是对方下，提示等待
+	; MOV AH,09H
+	; INT 21H										;输出请等待的信息
+FINISHCHECK:					
+    POP DX 										;恢复CPU现场										
 	POP CX                                    
 	POP BX
 	POP AX
 	RET
 CHECKPLACE ENDP
-;=====/*计算当前位置分数*/=======
+;=====/*计算当前位置分数*/======= DL需要存当前位置要算的棋子的颜色，DH存另一棋子的颜色
 CALSCORE PROC NEAR
 	PUSH AX										;保存CPU现场
 	PUSH BX
 	PUSH CX
 	PUSH DX
-	MOV DX,0
-    MOV BX,0
-	MOV CX,0
-	MOV CL,X
-	CMP MY,1        ; 判断机器黑棋还是白棋
-    JE MYBLACK
-	MOV DL,BLACK    ; 机器是黑棋
-	MOV DH,WHITE    ; 玩家是白棋
-    JMP MULX7
-MYBLACK:
-    MOV DL,WHITE    ; 机器是白棋
-	MOV DH,BLACK    ; 玩家是黑棋
-    JMP MULX7
-MULX7:
-    ADD BL,15
-	LOOP MULX7										
-	ADD BL,Y
+	MOV SCORE,0
+	GET_CB_ADDRESS X,Y                           ; 获取点X,Y的地址,放到BX
+	MOV CX,8       ; 计算分数，循环八次
 	CALL SCORE1
-	CMP SCORE,10000
-	JGE FINISHCAL
+	CMP CHESSMODEL[16],1   ; 如果有一个能五连
+	JGE FINISHCAL          ; 则结束计算
 	CALL SCORE2
-	CMP SCORE,10000 
+	CMP CHESSMODEL[16],1 
 	JGE FINISHCAL
 	CALL SCORE3
-	CMP SCORE,10000
+	CMP CHESSMODEL[16],1
 	JGE FINISHCAL
 	CALL SCORE4
-	CMP SCORE,10000
-	JMP FINISHCAL
+	CMP CHESSMODEL[16],1
+	JGE FINISHCAL
+	CALL SCORE5
+	CMP CHESSMODEL[16],1
+	JGE FINISHCAL
+	CALL SCORE6
+	CMP CHESSMODEL[16],1
+	JGE FINISHCAL
+	CALL SCORE7
+	CMP CHESSMODEL[16],1
+	JGE FINISHCAL
+	CALL SCORE8
 FINISHCAL:
+	CLC
+    MOV AX,0               ; 清零
+	MOV DX,0               ; 清零
+	MOV BX,CX              ; 第cx个
+	MOV AL,CHESSMODEL[BX]  ; 第bx个棋形的个数
+	ADD BX,BX              ; CHESSSCORE是word类型，所以偏移地址为2BX
+    MUL CHESSSCORE[BX]     ; chessscore[bx]*chessmodel[bx]
+	ADD SCORE,AX           ; 加到总分
+	LOOP FINISHCAL         ; 循环计算
+	MOV AX,0
+	MOV AL,CHESSMODEL[0]   ; 计算第一个棋形的分数
+	MUL CHESSSCORE[0]
+	ADD SCORE,AX
+	MOV CX,8               ; 循环8次清0
+CLEARCM:                   ; 清空棋形数组
+	MOV BX,CX
+	MOV CHESSMODEL[BX],0
+	LOOP CLEARCM
+	MOV CHESSMODEL[0],0	
     POP DX
 	POP CX
 	POP BX
 	POP AX
 	RET
 CALSCORE ENDP
-;=========/*判断横向是否连成5个*/========
+;=========/*判断东方向的棋形*/========
 SCORE1 PROC NEAR								;横向判断子程序
     PUSH BX										;保存cpu现场
     CMP Y,10	 									;判断横向是否有10个字节
@@ -618,44 +724,44 @@ SCORE1 PROC NEAR								;横向判断子程序
     JNE SC13
     CMP DL,CHESSBOARD[BX+4]								;判断棋盘横向是否有5个棋子连在一起
     JNE SC14
-    ADD SCORE,10000										;1111,10000分
+    INC CHESSMODEL[8]										;1111,10000分
 	JMP SC10
 SC11:
     CMP DH,CHESSBOARD[BX+1]
 	JE SC111
-	ADD SCORE,2                          ; 0XXX,2分  
+	INC CHESSMODEL[1]                          ; 0XXX,2分  
 	JMP SC10
 SC111:
-	ADD SCORE,3                          ; 2XXX，3分   
+	INC CHESSMODEL[0]                          ; 2XXX，3分   
 	JMP SC10
 SC12:
     CMP DH,CHESSBOARD[BX+2]
 	JE SC121
-	ADD SCORE,10                          ; 10XX,10分
+	INC CHESSMODEL[3]                          ; 10XX,10分
 	JMP SC10
 SC121:
-	ADD SCORE,5                          ; 12XX,5分
+	INC CHESSMODEL[2]                         ; 12XX,5分
 	JMP SC10
 SC13:
 	CMP DH,CHESSBOARD[BX+3]
 	JE SC131
-	ADD SCORE,200                       ; 110X,200分
+	INC CHESSMODEL[5]                      ; 110X,200分
 	JMP SC10
 SC131:
-    ADD SCORE,8                            ; 112X,8分
+    INC CHESSMODEL[4]                            ; 112X,8分
 	JMP SC10	
 SC14:
 	CMP DH,CHESSBOARD[BX+4]
 	JE SC141
-	ADD SCORE,1000                        ; 1110,1000分
+	INC CHESSMODEL[7]                        ; 1110,1000分
 	JMP SC10
 SC141:
-	ADD SCORE,100                           ; 1112,100分
+	INC CHESSMODEL[6]                           ; 1112,100分
 SC10: 
     POP BX										;恢复cpu现场
     RET											;子程序结束返回 
 SCORE1 ENDP
-;=========/*判断纵向是否连成5个*/========
+;=========/*判断南方向的棋形*/========
 SCORE2 PROC NEAR										;纵向判断子程序
    PUSH BX										;保存cpu现场
    CMP X,10										;判断纵向是否有10个字节
@@ -668,43 +774,43 @@ SCORE2 PROC NEAR										;纵向判断子程序
    JNE SC23
    CMP DL,CHESSBOARD[BX+60]								;判断棋盘纵向是否有5个棋子连在一起
    JNE SC24
-   ADD SCORE,10000   									;1111,10000分
+   INC CHESSMODEL[8]   									;1111,10000分
 SC21:
    CMP DH,CHESSBOARD[BX+15]
    JE SC211
-   ADD SCORE,2                          ; 0XXX,2分  
+   INC CHESSMODEL[1]                          ; 0XXX,2分  
    JMP SC20	
 SC211:
-	ADD SCORE,3                          ; 2XXX，3分   
+	INC CHESSMODEL[0]                          ; 2XXX，3分   
     JMP SC20
 SC22:
    	CMP DH,CHESSBOARD[BX+30]
    	JE SC221
-   	ADD SCORE,10                          ; 10XX,10分
+   	INC CHESSMODEL[3]                         ; 10XX,10分
 	JMP SC20
 SC221:
-	ADD SCORE,5                          ; 12XX,5分
+	INC CHESSMODEL[2]                         ; 12XX,5分
     JMP SC20
 SC23:
 	CMP DH,CHESSBOARD[BX+45]
 	JE SC231
-	ADD SCORE,200                       ; 110X,200分
+	INC CHESSMODEL[5]                       ; 110X,200分
 	JMP SC20
 SC231:
-	ADD SCORE,8                            ; 112X,8分
+	INC CHESSMODEL[4]                            ; 112X,8分
 	JMP SC20
 SC24:
 	CMP DH,CHESSBOARD[BX+60]
 	JE SC241
-	ADD SCORE,1000                        ; 1110,1000分
+	INC CHESSMODEL[7]                        ; 1110,1000分
 	JMP SC20
 SC241:
-	ADD SCORE,100                           ; 1112,100分
+	INC CHESSMODEL[6]                         ; 1112,100分
 SC20: 
    POP BX
    RET											;子程序结束返回
 SCORE2 ENDP
-;=========/*判断斜上是否连成5个*/========
+;=========/*判断东北方向的棋形*/========
 SCORE3 PROC NEAR										;斜上判断子程序
    PUSH BX										;保存cpu现场
    CMP X,4		      								;判断纵向是否有4个字节                  																	
@@ -719,134 +825,328 @@ SCORE3 PROC NEAR										;斜上判断子程序
    JNE SC33
    CMP DL,CHESSBOARD[BX-56]								;判断棋盘斜上是否有5个棋子连在一起
    JNE SC34
-   MOV SCORE,10000   									;1111,10000分
+   INC CHESSMODEL[8]  									;1111,10000分
 SC31:
 	CMP DH,CHESSBOARD[BX-14]
    	JE SC311
-   	ADD SCORE,2                          ; 0XXX,2分  
+   	INC CHESSMODEL[1]                          ; 0XXX,2分  
    	JMP SC30
 SC311:
-	ADD SCORE,3                          ; 2XXX，3分   
+	INC CHESSMODEL[0]                        ; 2XXX，3分   
 	JMP SC30
 SC32:
    	CMP DH,CHESSBOARD[BX-28]
    	JE SC321
-   	ADD SCORE,10                          ; 10XX,10分
+   	INC CHESSMODEL[3]                         ; 10XX,10分
 	JMP SC30
 SC321:
-	ADD SCORE,5                          ; 12XX,5分
+	INC CHESSMODEL[2]                          ; 12XX,5分
 	JMP SC30
 SC33:
 	CMP DH,CHESSBOARD[BX-42]
 	JE SC331
-	ADD SCORE,200                       ; 110X,200分
+	INC CHESSMODEL[5]                      ; 110X,200分
 	JMP SC30
 SC331:
-	ADD SCORE,8                            ; 112X,8分
+	INC CHESSMODEL[4]                          ; 112X,8分
 	JMP SC30
 SC34:
 	CMP DH,CHESSBOARD[BX-56]
 	JE SC341
-	ADD SCORE,1000                        ; 1110,1000分
+	INC CHESSMODEL[7]                        ; 1110,1000分
 	JMP SC30
 SC341:
-	ADD SCORE,100                           ; 1112,100分
+	INC CHESSMODEL[6]                          ; 1112,100分
 SC30: 
    POP BX
    RET											;子程序结束返回
 SCORE3 ENDP
-;=========/*判断斜下是否连成5个*/========
+;=========/*判断东南方向的棋形*/========
 SCORE4 PROC NEAR										;斜下判断子程序
-   PUSH BX										;保存cpu现场
-   CMP X,10										;判断纵向是否有10个字节
-   JG SC40										;若小于则斜下不能连成5个
-   CMP Y,10										;判断横向是否有10个字节
-   JG SC40         									;若小于则斜下不能连成5个  ;不能斜下
-   CMP DL,CHESSBOARD[BX+16]								;判断棋盘斜下是否有2个棋子连在一起 
-   JNE SC41
-   CMP DL,CHESSBOARD[BX+32]								;判断棋盘斜下是否有3个棋子连在一起
-   JNE SC42
-   CMP DL,CHESSBOARD[BX+48]								;判断棋盘斜下是否有4个棋子连在一起
-   JNE SC43
-   CMP DL,CHESSBOARD[BX+64]								;判断棋盘斜下是否有5个棋子连在一起
+   	PUSH BX										;保存cpu现场
+   	CMP X,10										;判断纵向是否有10个字节
+   	JG SC40										;若小于则斜下不能连成5个
+   	CMP Y,10										;判断横向是否有10个字节
+   	JG SC40         									;若小于则斜下不能连成5个  ;不能斜下
+   	CMP DL,CHESSBOARD[BX+16]								;判断棋盘斜下是否有2个棋子连在一起 
+   	JNE SC41
+   	CMP DL,CHESSBOARD[BX+32]								;判断棋盘斜下是否有3个棋子连在一起
+   	JNE SC42
+   	CMP DL,CHESSBOARD[BX+48]								;判断棋盘斜下是否有4个棋子连在一起
+   	JNE SC43
+   	CMP DL,CHESSBOARD[BX+64]								;判断棋盘斜下是否有5个棋子连在一起
 	JNE SC44
-	MOV SCORE,10000   									;1111,10000分
+	INC CHESSMODEL[8]   									;1111,10000分
 SC41:
 	CMP DH,CHESSBOARD[BX+16]
    	JE SC411
-   	ADD SCORE,2                          ; 0XXX,2分  
+   	INC CHESSMODEL[1]                          ; 0XXX,2分  
    	JMP SC40
 SC411:
-	ADD SCORE,3                          ; 2XXX，3分   
+	INC CHESSMODEL[0]                         ; 2XXX，3分   
 	JMP SC40
 SC42:
    	CMP DH,CHESSBOARD[BX+32]
    	JE SC421
-   	ADD SCORE,10                          ; 10XX,10分
+   	INC CHESSMODEL[3]                          ; 10XX,10分
 SC421:
-	ADD SCORE,5                          ; 12XX,5分
+	INC CHESSMODEL[2]                          ; 12XX,5分
 	JMP SC40
 SC43:
 	CMP DH,CHESSBOARD[BX+48]
 	JE SC431
-	ADD SCORE,200                       ; 110X,200分
+	INC CHESSMODEL[5]                      ; 110X,200分
 	JMP SC40
 SC431:
-	ADD SCORE,8                            ; 112X,8分
+	INC CHESSMODEL[4]                            ; 112X,8分
 	JMP SC40
 SC44:
     CMP DH,CHESSBOARD[BX+64]
 	JE SC441
-	ADD SCORE,1000                        ; 1110,1000分
+	INC CHESSMODEL[7]                       ; 1110,1000分
 SC441:
-	ADD SCORE,100                           ; 1112,100分																		
+	INC CHESSMODEL[6]                           ; 1112,100分																		
 SC40: 
    POP BX
    RET											;子程序结束返回
-SCORE4 ENDP 	 
-
-
+SCORE4 ENDP
+;=========/*判断西方向的棋形*/========
+SCORE5 PROC NEAR
+	PUSH BX
+	CMP Y,4
+	JL SC50
+	CMP DL,CHESSBOARD[BX-1]
+	JNE SC51
+	CMP DL,CHESSBOARD[BX-2]
+	JNE SC52
+	CMP DL,CHESSBOARD[BX-3]
+	JNE SC53
+	CMP DL,CHESSBOARD[BX-4]
+	JNE SC54
+	INC CHESSMODEL[8]  						;1111,10000分
+	JMP SC50
+SC51:
+	CMP DH,CHESSBOARD[BX-1]
+	JE SC511
+	INC CHESSMODEL[1]                          ; 0XXX,2分  
+	JMP SC50
+SC511:
+	INC CHESSMODEL[0]                        ; 2XXX，3分   
+	JMP SC50
+SC52:
+   	CMP DH,CHESSBOARD[BX-2]
+   	JE SC521
+   	INC CHESSMODEL[3]                         ; 10XX,10分
+	JMP SC50
+SC521:
+	INC CHESSMODEL[2]                          ; 12XX,5分
+	JMP SC50
+SC53:
+	CMP DH,CHESSBOARD[BX-3]
+	JE SC531
+	INC CHESSMODEL[5]                      ; 110X,200分
+	JMP SC50
+SC531:
+	INC CHESSMODEL[4]                          ; 112X,8分
+	JMP SC50
+SC54:
+	CMP DH,CHESSBOARD[BX-4]
+	JE SC541
+	INC CHESSMODEL[7]                        ; 1110,1000分
+	JMP SC50
+SC541:
+	INC CHESSMODEL[6]                          ; 1112,100分
+SC50: 
+   POP BX
+   RET											;子程序结束返回
+SCORE5 ENDP
+;=========/*判断北方向的棋形*/========
+SCORE6 PROC NEAR
+	PUSH BX
+	CMP X,4
+	JL SC60
+	CMP DL,CHESSBOARD[BX-15]
+	JNE SC61
+	CMP DL,CHESSBOARD[BX-30]
+	JNE SC62
+	CMP DL,CHESSBOARD[BX-45]
+	JNE SC63
+	CMP DL,CHESSBOARD[BX-60]
+	JNE SC64
+	INC CHESSMODEL[8]  						;1111,10000分
+	JMP SC60
+SC61:
+	CMP DH,CHESSBOARD[BX-15]
+	JE SC611
+	INC CHESSMODEL[1]                          ; 0XXX,2分  
+	JMP SC60
+SC611:
+	INC CHESSMODEL[0]                        ; 2XXX，3分   
+	JMP SC60
+SC62:
+   	CMP DH,CHESSBOARD[BX-30]
+   	JE SC621
+   	INC CHESSMODEL[3]                         ; 10XX,10分
+	JMP SC60
+SC621:
+	INC CHESSMODEL[2]                          ; 12XX,5分
+	JMP SC60
+SC63:
+	CMP DH,CHESSBOARD[BX-45]
+	JE SC631
+	INC CHESSMODEL[5]                      ; 110X,200分
+	JMP SC60
+SC631:	
+	INC CHESSMODEL[4]                          ; 112X,8分
+	JMP SC60
+SC64:	
+	CMP DH,CHESSBOARD[BX-60]
+	JE SC641
+	INC CHESSMODEL[7]                        ; 1110,1000分
+	JMP SC60
+SC641:	
+	INC CHESSMODEL[6]                          ; 1112,100分
+SC60: 
+   POP BX
+   RET											;子程序结束返回
+SCORE6 ENDP
+;=========/*判断西北方向的棋形*/========
+SCORE7 PROC NEAR
+	PUSH BX
+	CMP X,4
+	JL SC70
+	CMP Y,4
+	JL SC70
+	CMP DL,CHESSBOARD[BX-16]
+	JNE SC71
+	CMP DL,CHESSBOARD[BX-32]
+	JNE SC72
+	CMP DL,CHESSBOARD[BX-48]
+	JNE SC73
+	CMP DL,CHESSBOARD[BX-64]
+	JNE SC74
+	INC CHESSMODEL[8]  						;1111,10000分
+	JMP SC70
+SC71:
+	CMP DH,CHESSBOARD[BX-16]
+	JE SC711
+	INC CHESSMODEL[1]                          ; 0XXX,2分  
+	JMP SC70
+SC711:
+	INC CHESSMODEL[0]                        ; 2XXX，3分   
+	JMP SC70
+SC72:
+   	CMP DH,CHESSBOARD[BX-32]
+   	JE SC721
+   	INC CHESSMODEL[3]                         ; 10XX,10分
+	JMP SC70
+SC721:
+	INC CHESSMODEL[2]                          ; 12XX,5分
+	JMP SC70
+SC73:	
+	CMP DH,CHESSBOARD[BX-48]
+	JE SC731
+	INC CHESSMODEL[5]                      ; 110X,200分
+	JMP SC70
+SC731:	
+	INC CHESSMODEL[4]                          ; 112X,8分
+	JMP SC70
+SC74:
+	CMP DH,CHESSBOARD[BX-64]
+	JE SC741
+	INC CHESSMODEL[7]                        ; 1110,1000分
+	JMP SC70
+SC741:
+	INC CHESSMODEL[6]                          ; 1112,100分
+SC70: 
+   POP BX
+   RET											;子程序结束返回
+SCORE7 ENDP
+;=========/*判断西南方向的棋形*/========
+SCORE8 PROC NEAR
+	PUSH BX
+	CMP X,10
+	JG SC80
+	CMP Y,4
+	JL SC80
+	CMP DL,CHESSBOARD[BX+14]
+	JNE SC81
+	CMP DL,CHESSBOARD[BX+28]
+	JNE SC82
+	CMP DL,CHESSBOARD[BX+42]
+	JNE SC83
+	CMP DL,CHESSBOARD[BX+56]
+	JNE SC84
+	INC CHESSMODEL[8]  						;1111,10000分
+	JMP SC80
+SC81:
+	CMP DH,CHESSBOARD[BX+14]
+	JE SC811
+	INC CHESSMODEL[1]                          ; 0XXX,2分  
+	JMP SC80
+SC811:
+	INC CHESSMODEL[0]                        ; 2XXX，3分   
+	JMP SC80
+SC82:
+   	CMP DH,CHESSBOARD[BX+28]
+   	JE SC821
+   	INC CHESSMODEL[3]                         ; 10XX,10分
+	JMP SC80
+SC821:	
+	INC CHESSMODEL[2]                          ; 12XX,5分
+	JMP SC80
+SC83:	
+	CMP DH,CHESSBOARD[BX+42]
+	JE SC831
+	INC CHESSMODEL[5]                      ; 110X,200分
+	JMP SC80
+SC831:
+	INC CHESSMODEL[4]                          ; 112X,8分
+	JMP SC80
+SC84:
+	CMP DH,CHESSBOARD[BX+56]
+	JE SC841
+	INC CHESSMODEL[7]                        ; 1110,1000分
+	JMP SC80
+SC841:
+	INC CHESSMODEL[6]                          ; 1112,100分
+SC80: 
+   POP BX
+   RET											;子程序结束返回
+SCORE8 ENDP
 ;========/*机器落子*/=============
 ROBOTPUTDOWN PROC NEAR
 	PUSH AX										;保存CPU现场
 	PUSH BX
 	PUSH CX
 	PUSH DX
-	MOV CX,0									;字符指针初始化
-	MOV CL,X	
-	MOV BX,0									;清空寄存器
-MULX6: 
-	ADD BL,15									;字符指针右移15个字节
-	LOOP MULX6									;循环MULX4
-	ADD BL,Y									;字符指针右移Y个字节
+	GET_CB_ADDRESS X,Y                          ; 获取点X,Y的地址,放到BX
 	CMP MY,2									; 判断我是白棋还是黑棋
 	JE MM3                                      ; 如果是白棋,则机器为黑棋
 	MOV CHESSBOARD[BX],WHITE					; 放置白棋
-	MOV TEMP,0                                   ; 接下来轮到黑棋下
+	MOV TEMP,0                                  ; 接下来轮到黑棋下
 	JMP HASPUTDOWN								; 找到了落子位置
 MM3:													
     MOV CHESSBOARD[BX],BLACK					; 放置黑棋
-	MOV TEMP,1                                   ; 接下来轮到白棋下
+	MOV TEMP,1                                  ; 接下来轮到白棋下
 HASPUTDOWN:
-    INC NUMM	                                    ; 棋子数量加1
-	POP DX										;恢复CPU现场
+    INC NUMM	                                ; 棋子数量加1
+	POP DX										; 恢复CPU现场
 	POP CX
 	POP BX
 	POP AX
 	RET
 ROBOTPUTDOWN ENDP
 ;=========/*判断是否获胜*/========
-ISWIN PROC NEAR										;我获胜的信息提示
+ISWIN PROC NEAR
+	PUSH AX
+	PUSH BX
+	PUSH CX
+	PUSH DX										
     MOV X,0										;初始化X和Y
     MOV Y,0
 LOOPY:
-    MOV CX,0										;字符指针初始化
-	MOV CL,X
-	MOV BX,0									;清空寄存器
-MULX3: 
-    ADD BL,15										;字符指针右移15个字节
-	LOOP MULX3									;循环MULX3
-	ADD BL,Y                           								;BX=15*X+Y
+	GET_CB_ADDRESS X,Y                           ; 获取点X,Y的地址,放到BX
 	MOV DL,CHESSBOARD[BX]               																	
 	CMP TEMP,0                         		   ; TEMP=0,判断白子是否获胜
 	JZ L4
@@ -858,19 +1158,20 @@ L4:
     JE PANDUAN										;判断白子是否连成5个
 	JMP NEXT 									;进入下一轮判断
 PANDUAN: 										;游戏胜利的判断
-    CALL TEST1                          								;横着
-	CMP OVER,1									;横着连成5个游戏结束
-	JE RETURNISWIN									;返回胜利的判断
-	CALL TEST2                         								;竖着
-    CMP OVER,1										;竖着连成5个游戏结束
-	JE RETURNISWIN									;返回胜利的判断
-	CALL TEST3                          								;斜上
-	CMP OVER,1									;斜上连成5个游戏结束
-	JE RETURNISWIN									;返回胜利的判断
-	CALL TEST4                          								;斜下
-    CMP OVER,1										;斜下连成5个游戏结束
-	JE RETURNISWIN									;返回胜利的判断
-NEXT: 
+    CALL SCORE1                          								;横着
+	CMP CHESSMODEL[8],1									;横着连成5个游戏结束
+	JGE RETURNISWIN									;返回胜利的判断
+	CALL SCORE2                         								;竖着
+    CMP CHESSMODEL[8],1										;竖着连成5个游戏结束
+	JGE RETURNISWIN									;返回胜利的判断
+	CALL SCORE3                          								;斜上
+	CMP CHESSMODEL[8],1									;斜上连成5个游戏结束
+	JGE RETURNISWIN									;返回胜利的判断
+	CALL SCORE4                          								;斜下
+    CMP CHESSMODEL[8],1										;斜下连成5个游戏结束
+	JGE RETURNISWIN									;返回胜利的判断
+NEXT:
+    MOV CHESSMODEL[8],0 
     INC Y											;Y的字符指针右移
 	CMP Y,15										;比较Y的值
 	JNE LOOPY
@@ -878,143 +1179,129 @@ NEXT:
 	INC X										;X的字符指针右移
 	CMP X,15										;比较X的值
 	JNE LOOPY
+	MOV CX,8
+	JMP ENDISWIN
 RETURNISWIN:
+	MOV OVER,1   								;游戏结束
+	MOV CX,8
+ENDISWIN:
+    MOV BX,CX                             
+	MOV CHESSMODEL[BX],0                     ; CHESSMODEL清零
+	LOOP ENDISWIN
+	MOV CHESSMODEL[0],0
+    POP DX
+	POP CX
+	POP BX    
+	POP AX
     RET											;子程序结束返回
-ISWIN ENDP
-;=========/*判断横向是否连成5个*/========
-TEST1 PROC NEAR										;横向判断子程序
-    PUSH BX										;保存cpu现场
-    CMP Y,10	 									;判断横向是否有10个字节
-    JG  RETURN1										;若小于则横向不能连成5个
-    CMP DL,CHESSBOARD[BX+1]								;判断棋盘横向是否有2个棋子连在一起
-    JNE RETURN1
-    CMP DL,CHESSBOARD[BX+2]								;判断棋盘横向是否有3个棋子连在一起
-    JNE RETURN1 
-    CMP DL,CHESSBOARD[BX+3]								;判断棋盘横向是否有4个棋子连在一起
-    JNE RETURN1
-    CMP DL,CHESSBOARD[BX+4]								;判断棋盘横向是否有5个棋子连在一起
-    JNE RETURN1
-    MOV OVER,1										;游戏结束
-RETURN1: 
-    POP BX										;恢复cpu现场
-    RET											;子程序结束返回 
-TEST1 ENDP
-;=========/*判断纵向是否连成5个*/========
-TEST2 PROC NEAR										;纵向判断子程序
-   PUSH BX										;保存cpu现场
-   CMP X,10										;判断纵向是否有10个字节
-   JG RETURN2										;若小于则纵向不能连成5个
-   CMP DL,CHESSBOARD[BX+15]								;判断棋盘纵向是否有2个棋子连在一起
-   JNE RETURN2
-   CMP DL,CHESSBOARD[BX+30]								;判断棋盘纵向是否有3个棋子连在一起
-   JNE RETURN2
-   CMP DL,CHESSBOARD[BX+45]								;判断棋盘纵向是否有4个棋子连在一起
-   JNE RETURN2
-   CMP DL,CHESSBOARD[BX+60]								;判断棋盘纵向是否有5个棋子连在一起
-   JNE RETURN2
-   MOV OVER,1   										;游戏结束
-RETURN2: 
-   POP BX
-   RET											;子程序结束返回
-TEST2 ENDP
-;=========/*判断斜上是否连成5个*/========
-TEST3 PROC NEAR										;斜上判断子程序
-   PUSH BX										;保存cpu现场
-   CMP X,4		      								;判断纵向是否有4个字节                  																	
-   JL RETURN3										;若小于则斜上不能连成5个
-   CMP Y,10										;判断横向是否有10个字节
-   JG RETURN3
-   CMP DL,CHESSBOARD[BX-14]								;判断棋盘斜上是否有2个棋子连在一起
-   JNE RETURN3
-   CMP DL,CHESSBOARD[BX-28]								;判断棋盘斜上是否有3个棋子连在一起
-   JNE RETURN3
-   CMP DL,CHESSBOARD[BX-42]								;判断棋盘斜上是否有4个棋子连在一起
-   JNE RETURN3
-   CMP DL,CHESSBOARD[BX-56]								;判断棋盘斜上是否有5个棋子连在一起
-   JNE RETURN3
-   MOV OVER,1   										;游戏结束
-RETURN3: 
-   POP BX
-   RET											;子程序结束返回
-TEST3 ENDP
-;=========/*判断斜下是否连成5个*/========
-TEST4 PROC NEAR										;斜下判断子程序
-   PUSH BX										;保存cpu现场
-   CMP X,10										;判断纵向是否有10个字节
-   JG RETURN4										;若小于则斜下不能连成5个
-   CMP Y,10										;判断横向是否有10个字节
-   JG RETURN4         									;若小于则斜下不能连成5个  ;不能斜下
-   CMP DL,CHESSBOARD[BX+16]								;判断棋盘斜下是否有2个棋子连在一起 
-   JNE RETURN4
-   CMP DL,CHESSBOARD[BX+32]								;判断棋盘斜下是否有3个棋子连在一起
-   JNE RETURN4
-   CMP DL,CHESSBOARD[BX+48]								;判断棋盘斜下是否有4个棋子连在一起
-   JNE RETURN4
-   CMP DL,CHESSBOARD[BX+64]								;判断棋盘斜下是否有5个棋子连在一起
-	JNE RETURN4
-	MOV OVER,1   									;游戏结束																		
-RETURN4: 
-   POP BX
-   RET											;子程序结束返回
-TEST4 ENDP 	 
+ISWIN ENDP	 
 ;=========/*打印棋盘*/========
-PRINT PROC NEAR										;打印棋盘
+PRINT PROC NEAR									;打印棋盘
 	PUSH SI
 	PUSH AX										;保存CPU现场
 	PUSH DX
-	MOV AH,02H									;使用10H中断的设置光标位置功能
+	MOV AH,02H									;使用INT 10H(BIOS中断)的设置光标位置功能:DH=行，DL=列
 	MOV DL,00H									;光标从0,0开始
-    MOV DH,00H										;光标的列坐标
+    MOV DH,00H										
     INT 10H	
-    MOV DX,OFFSET TI									;指定字符串  
-    MOV AH,09H										;屏幕显示字符串
-    INT 21H
+	;-----打印第一行(x=0)------
+	MOV SI, 0
+PRFIRSTL:
+    MOV DX,OFFSET FIRSTLINE						;打印棋盘的Y坐标(即最上面一行)  
+    ;MOV AH,09H									;显示字符串
+    ;INT 21H
+	;-------
+	MOV DL, FIRSTLINE[SI]
+	CMP DL, '$'
+	JE PRNEXT
+	MOV BL, 01100011B
+    CALL MYPRINT
+	INC SI
+	JMP PRFIRSTL
+	;-------
+PRNEXT:
+	MOV AH, 03H									;10H中断; 功能号03获取光标坐标
+	INT 10H										
+	INC DH										
+	XOR DL, DL
+	MOV AH, 02H									;10H中断; 功能号02设置光标坐标
+	INT 10H
 	MOV X,0										;初始化X Y SI
 	MOV Y,0
 	MOV SI,0
 LOOP2: 
+	;------打印第一列(y=0),即每行的首位------
     CMP Y,0										;判断Y是否为0
-    JNE NOTHEAD
-    MOV DL,X
-    ADD DL,31H										;X的字符指针右移
-	CMP DL,'9'									;判断X是否大于等于9
+    JNE NOTHEAD									;如果是0，进入打印第一列的程序; 否则跳过
+    MOV DL,X									
+    ADD DL,31H									;将X从坐标(纯数字)转化成对应的ASCII字符
+	CMP DL,'9'									;如果字符是'1'~'9'，直接跳转至PP打印
 	JLE PP
-	ADD DL,39									;X的字符指针右移39个字节 
+	ADD DL,7									;如果字符是'A'~...，加上7转化后再打印 
 PP:
-    MOV AH,02H
-    INT 21H										;使用21H中断的输出字符功能
+	MOV BL, 01100011B
+    CALL MYPRINT								
+;------打印棋盘中间部分-------
 NOTHEAD:
-    MOV DL,CHESSBOARD[SI]
-    MOV AH,02H
-	INT 21H
-	INC SI										;SI、Y指针同时右移1个字节，指向下一个字符
-	INC Y										;SI、Y指针同时右移1个字节，指向下一个字符
-	CMP Y,15										;判断Y的大小
+	;------循环打印每一行-------
+    MOV DL,CHESSBOARD[SI]						;Y和SI表示记录所在的列(y坐标)
+    ;MOV AH,02H									
+	;INT 21H
+	;-------
+	MOV AH, 09H									;10H中断; 功能号09实现输出
+	MOV AL, DL									;内容
+	MOV BH, 0									;页号
+	MOV BL, 01100111B							;属性: IRGB|IRGB, 前为背景、后为字体; I表示高亮
+	MOV CX, 1									;打印次数
+	INT 10H										;10H中断; 功能号03获取光标坐标
+	MOV AH, 03H
+	INT 10H										
+	INC DL										;光标后移1位打印下一个字符
+	MOV AH, 02H									;10H中断; 功能号02设置光标坐标
+	INT 10H
+	;-------										
+	INC SI										;打印下一个字符，即Y+=1,SI+=1
+	INC Y										
+	CMP Y,15									;如果到达当前行的末尾，则跳转至换行程序
 	JE NEXTLINE
-	MOV DL,'-'									;输出一个'-'
-	MOV AH,02H									;使用21H中断的输出字符功能
-	INT 21H
+	;MOV DL,'-'									;否则输出一个'-'
+	;MOV AH,02H									;使用21H中断的输出字符功能
+	;INT 21H
+	;----
+	MOV AH, 09H									;10H中断; 功能号09实现输出
+	MOV AL, '-'									;内容
+	MOV BH, 0									;页号
+	MOV BL, 01100111B							;属性: IRGB|IRGB, 前为背景、后为字体; I表示高亮
+	MOV CX, 1									;打印次数
+	INT 10H										;10H中断; 功能号03获取光标坐标
+	MOV AH, 03H
+	INT 10H										
+	INC DL										;光标后移1位打印下一个字符
+	MOV AH, 02H									;10H中断; 功能号02设置光标坐标
+	INT 10H
+	;----
 	JMP LOOP2									;回到循环2
 NEXTLINE:
+	;-------换行-------
     MOV DL,32
     MOV AH,02H
 	INT 21H
 	MOV DL,0AH									;输出一个回车符（0AH）
-	MOV AH,02H									;使用21H中断的输出字符功能
+	MOV AH,02H									
 	INT 21H
 	MOV DL,0DH									;输出一个换行符（0AD）
-	MOV AH,02H									;使用21H中断的输出字符功能
+	MOV AH,02H									
 	INT 21H
-    INC X											;X的字符指针右移1个字节
-	MOV Y,0										;初始化Y
-    CMP X,15
-	JNE LOOP2
-    MOV DX,OFFSET CLEAN								;更新屏幕的信息提示
-    MOV AH,09H										;使用21H中断的显示字符串功能
+    INC X										;准备打印下一行, X+=1
+	MOV Y,0										;复位Y，使回到新行的第一位
+    CMP X,15									;如果棋盘没有全部打印完成
+	JNE LOOP2									;跳转至循环部分继续打印
+    MOV DX,OFFSET CLEAN							;否则更新屏幕的信息提示
+    MOV AH,09H									
     INT 21H
-    MOV AH,02H										;使用10H中断的设置光标位置功能
-	MOV DL,00H									;光标从0,17开始
-    MOV DH,10H										;设置光标的列坐标
+    MOV AH,02H									;使用INT 10H(BIOS中断)的设置光标位置功能:DH=行，DL=列
+	MOV DL,00H									;光标从10行 0列开始
+    MOV DH,10H									
 	INT 10H
 	POP DX										;恢复CPU现场
 	POP AX
@@ -1066,7 +1353,6 @@ DELAY1:
      POP AX
      RET 
 GENSOUND ENDP
-
 ;--------------------------
 WAITF PROC NEAR
 	PUSH AX            ;保存CPU现场
@@ -1087,12 +1373,17 @@ MUSIC PROC NEAR
     ;MOV AX, INISTACK
     ;MOV SS, AX
     ;MOV SP, 300
-	CMP MUSTYPE,1						;判断音乐类型
+	CMP MUSTYPE, 1						;判断音乐类型
 	JE MUS_T1
+	CMP MUSTYPE, 2
+	JE MUS_T2
 	ADDRESS MUS_FREQ0, MUS_TIME0		;取音乐0的地址
 	JMP MUSSTT
 MUS_T1:
-	ADDRESS MUS_FREQ, MUS_TIME			;取音乐1的地址
+	ADDRESS MUS_FREQ1, MUS_TIME1			;取音乐1的地址
+	JMP MUSSTT
+MUS_T2:
+	ADDRESS MUS_FREQ2, MUS_TIME2
 MUSSTT:									;初始化完成，开始播放工作
     XOR AX, AX
 FREG:
@@ -1132,7 +1423,7 @@ MLOOP:
 	POP AX
 	RET										;子程序结束返回
 SEND ENDP
-;/*发送我退出的消息*/
+;=========发送我退出的消息=========*/
 SENDQ PROC NEAR																															
 	PUSH AX										;保存CPU现场
 	PUSH DX
@@ -1174,7 +1465,7 @@ IRQ11 PROC FAR
     CMP AL,59                           			
     JNZ L9											;若对方退出，将状态改为5
     MOV STATE,5										;对方退出
-    CALL SLED										;数码管显示当前状态5
+    ;CALL SLED										;数码管显示当前状态5
     JMP CLE										;清空棋盘
 L9:    
     CMP AL,60
@@ -1198,8 +1489,8 @@ YY:
     CALL PRINT										;打印棋盘
     MOV MY,1										;我的坐标是1
     mov state,0										;游戏正在进行中
-    call sled      										;数码管显示当前状态                                             
-    JMP CLE										;棋盘屏幕更新
+    ;call sled      								;数码管显示当前状态                                             
+    JMP CLE											;棋盘屏幕更新
 L7: 
     MOV MY,1										;我的坐标是1，对方的坐标是2
     call check										;检查落子是否合法
@@ -1207,11 +1498,11 @@ L7:
     CALL PRINT										;打印棋盘
     MOV MY,2										;我的坐标是2，对方坐标是1
     mov state,0										;该我落子
-    call sled   										;数码管显示当前状态                                                 
+    ;call sled   										;数码管显示当前状态                                                 
     JMP CLE										;屏幕棋盘更新
 HWIN:											;如果他赢了，STATE=4
     MOV STATE,4										;对方赢了
-    CALL SLED    										;数码管显示当前状态                                                  
+    ;CALL SLED    										;数码管显示当前状态                                                  
     JMP CLE										;清空棋盘
 CLE:
 	MOV AL,20H									;清除PCI9052中断标志
@@ -1226,5 +1517,27 @@ CLE:
 	POP AX
 	IRET										;中断返回
 IRQ11 ENDP
+;=======自定义打印程序=========
+;输入参数: BL为打印的属性
+;输入参数: DL为打印的字符
+MYPRINT PROC NEAR							
+	PUSH AX
+	PUSH CX
+	MOV AH, 09H									;10H中断; 功能号09实现输出
+	MOV AL, DL									;内容
+	MOV BL, BL									;属性: IRGB|IRGB, 前为背景、后为字体; I表示高亮
+	MOV BH, 0									;页号
+	MOV CX, 1									;打印次数
+	INT 10H										
+	MOV AH, 03H									;10H中断; 功能号03获取光标坐标
+	INT 10H										
+	INC DL										;光标后移1位打印下一个字符
+	MOV AH, 02H									;10H中断; 功能号02设置光标坐标
+	INT 10H
+	POP CX
+	POP AX
+	RET
+MYPRINT ENDP
+
 CODE ENDS
 	END START	
