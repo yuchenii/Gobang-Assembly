@@ -243,7 +243,6 @@ ILOSE:											;“我输了”的处理程序
 	CALL MUSIC									;调用播放音乐
 	JMP GEND2									;游戏结束信息提示
 IQUIT:											;“我退出”的处理程序
-	CALL SENDQ									;我退出就给对方发信息
 	MOV STATE,3									;对方已获胜
 HQUIT:											;“对方退出”的处理程序
 	MOV DX,OFFSET EXIT							;有人退出就显示退出消息
@@ -295,7 +294,6 @@ L3:
     mov X,AL										;保存输入的坐标值x用于以后发送
     mov AL,S2
     mov Y,AL        										;保存输入的坐标值y用于以后发送                                                
-	CALL SEND									;并发送坐标
 	CMP OVER,1									;判断我是否赢了
 	JE IWIN										;跳转到IWIN子程序
 	MOV STATE,1									;否则将STATE置1，表示我已下完，等待对方的X
@@ -1280,63 +1278,6 @@ FREG:
 END_MUS:
     RET
 MUSIC ENDP
-
-;=========/*发送X Y*/========
-SEND PROC NEAR										;查询方式发送X Y OVER
-	PUSH AX											;保存CPU现场
-	PUSH DX
-LOOPX:
-	MOV DX,0D409H
-	IN AL,DX
-	TEST AL,1
-	JZ LOOPX
-	MOV DX,0D408H
-	MOV AL,X
-	OUT DX,AL
-MLOOP: 
-    MOV DX,0D409H
-    IN AL,DX
-    TEST AL,1
-    JZ MLOOP
-    MOV DX,0D408H
-    MOV AL,Y
-    OUT DX,AL
-	POP DX										;恢复CPU现场
-	POP AX
-	RET										;子程序结束返回
-SEND ENDP
-;=========发送我退出的消息=========*/
-SENDQ PROC NEAR																															
-	PUSH AX										;保存CPU现场
-	PUSH DX
-LOOY:
-	MOV DX,0D409H
-	IN AL,DX
-	TEST AL,1
-	JZ LOOY
-	MOV DX,0D408H
-	MOV AL,59									;我退出，发59(避开有效输入字符)
-    OUT DX,AL
-	POP DX										;恢复CPU现场
-	POP AX
-	RET										;子程序结束返回
-SENDQ ENDP
-;=========/*发送获胜消息*/========
-SENDW PROC NEAR									;发送我退出的消息
-	PUSH AX										;保存CPU现场
-	PUSH DX
-LOY:
-	MOV DX,0D409H
-	IN AL,DX
-	TEST AL,1
-	JZ LOY
-	MOV DX,0D408H
-	MOV AL,60									;我获胜，发60
-    OUT DX,AL
-	POP DX										;恢复CPU现场
-	POP AX
-	RET										;子程序结束返回
-SENDW ENDP
 ;=======自定义打印程序=========
 ;输入参数: BL为打印的属性
 ;输入参数: DL为打印的字符
