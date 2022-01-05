@@ -2,6 +2,7 @@ DATA SEGMENT
 	BLACK EQU 1          ; 黑棋
 	WHITE EQU 2          ; 白棋
 	CHESSBOARD DB 218,13 DUP(194),191,13 DUP(195,13 DUP(197),180),192,13 DUP(193),217 	; 设置棋盘的缓冲区, 1黑棋 2白棋
+	CLEAN DB 72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,'$'; 更新棋盘
 	X DB 0										      ; 落子坐标 x
 	Y DB 0                                            ; 落子坐标 y
 	MY DB 1										      ; 自己的棋子颜色, 1黑棋 2白棋
@@ -23,18 +24,18 @@ DATA SEGMENT
 	CHESSMODEL DB 9 DUP(0)						      ; 棋形
 	CHESSSCORE DW 3,2,5,10,8,200,200,1000,10000       ; 棋形对应的分数
 	FIRSTLINE DB ' 1 2 3 4 5 6 7 8 9 A B C D E F','$' ; 棋盘的y坐标
-	ERROR DB 'YOU CANNOT PUT HERE!',0AH,0DH,'$' 	  ; 报错,"你不能放在这里"
-    WRONG DB 0AH,0DH,'FALSE INPUT!',0AH,0DH,'$'		  ; 错误信息的提示
-    COLOR DB 0AH,0DH,'PLEASE CHOOSE YOUR CHESSMAN COLOR:(1 FOR BLACK, 2 FOR WHITE)',0AH,0DH,'$'	; 选棋子的颜色, 1是黑色, 2是白色
-    CLEAN DB 72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,'$'; 更新棋盘
-    PUT DB 'PLEASE INPUT THE POSITION(X Y):',0AH,0DH,'$'			; 请输入棋子的位置(x,y)
-    GAMEEND DB 'ONE PLAYER HAS WIN!',0AH,0DH,'$'					; 游戏结束信息提示
-    CONGRA DB 'YOU WIN! CONGRATULATIONS!',0AH,0DH,'$'				; 游戏提示信息,"恭喜!你赢了!"
-    SORRY DB 'YOU LOSE! DONNOT GIVE UP!',0AH,0DH,'$'				; 游戏提示信息,"对不起,你输了,不要放弃!"
-    WAIT1 DB 'PLEASE WAIT...',0AH,0DH,'$'  							; 进入等待信息提示 
-    CHOOSE DB 'PLEASE CHOOSE GAME MODEL:(1 FOR ONE PLAYER, 2 FOR TWO PLAYERS, ESC TO QUIT)',0AH,0DH,'$'	; 选择游戏的玩法
-    EXIT DB 'ONE PLAYER HAS QUIT!',0AH,0DH,'$'						; 一个玩家退出
-	MUSTYPE DB 1								                    ; 音乐类型; 0报错, 1胜利, 2失败
+	STR_ERROR DB 'YOU CANNOT PUT HERE!',0AH,0DH,'$' 	  ; 报错,"你不能放在这里"
+    STR_WRONG DB 0AH,0DH,'FALSE INPUT!',0AH,0DH,'$'		  ; 错误信息的提示
+    STR_COLOR DB 0AH,0DH,'PLEASE CHOOSE YOUR CHESSMAN COLOR:(1 FOR BLACK, 2 FOR WHITE)',0AH,0DH,'$'	; 选棋子的颜色, 1是黑色, 2是白色
+    STR_PUT DB 'PLEASE INPUT THE POSITION(X Y):',0AH,0DH,'$'			; 请输入棋子的位置(x,y)
+    STR_GAMEEND DB 'ONE PLAYER HAS WIN!',0AH,0DH,'$'					; 游戏结束信息提示
+    STR_CONGRA DB 'YOU WIN! CONGRATULATIONS!',0AH,0DH,'$'				; 游戏提示信息,"恭喜!你赢了!"
+    STR_SORRY DB 'YOU LOSE! DONNOT GIVE UP!',0AH,0DH,'$'				; 游戏提示信息,"对不起,你输了,不要放弃!"
+    STR_WAIT1 DB 'PLEASE WAIT...',0AH,0DH,'$'  							; 进入等待信息提示 
+    STR_CHOOSE1 DB 'WELCOME! PLEASE CHOOSE GAME MODE:',0AH,0DH,'$'		; 游戏模式提示1
+	STR_CHOOSE2 DB 'PRESS 1 FOR ONE PLAYER (MAN VS CPU)',0AH,0DH,'PRESS 2 FOR TWO PLAYERS (MAN VS MAN)',0AH,0DH,'PRESS ESC TO QUIT',0AH,0DH,'$'	; 游戏模式提示2
+    STR_EXIT DB 'ONE PLAYER HAS QUIT!',0AH,0DH,'$'					; 一个玩家退出
+	MUS_TYPE DB 1								                    ; 音乐类型; 0报错, 1胜利, 2失败
     MUS_FREQ0 DW 230,150,-1						                    ; 报错音频率
 	MUS_TIME0 DW 30,30							                    ; 报错音节拍
 	MUS_FREQ1 DW 270,270,270,190,230,270,250,270,-1					; 胜利音乐频率表, -1为音乐播放结束符
@@ -77,21 +78,24 @@ START:
 	INT 10H
 	CALL PRINT									; 打印棋盘
 SELECT:                                 		; 选择功能
-    MOV DX,OFFSET CHOOSE                		; 选择双人或人机模式
-	MOV AH,09H									; 使用21H中断的设置光标位置功能
+    MOV DX,OFFSET STR_CHOOSE1                	; 选择双人或人机模式
+	MOV AH,09H									; 使用21H中断的输出字符串功能
 	INT 21H										; 在屏幕上显示输入的内容
-    MOV AH,1									; 使用21H号中断的显示输入功能						
+	MOV DX,OFFSET STR_CHOOSE2                	; 选择双人或人机模式
+	MOV AH,09H									; 使用21H中断的输出字符串功能
+	INT 21H	
+    MOV AH,1									; 使用21H中断的显示输入功能						
 	INT 21H
-	CMP AL,'1'                         			; 1为双人
+	CMP AL,'2'                         			; 2为双人(人人)
 	JE GAME1									; 输入为1, 双人模式
-	CMP AL,'2'                          		; 2为双机
+	CMP AL,'1'                          		; 1为单人(人机)
 	JZ MARK										; 输入为1, 进入积分
 	CMP AL,27                           		; 输入为ESC, 退出
     JZ GEND0									; 游戏结束
-	MOV DX,OFFSET WRONG      					; 输入不合规, 要求重新输入
+	MOV DX,OFFSET STR_WRONG      				; 输入不合规, 要求重新输入
 	MOV AH,09H									; 在屏幕上显示内容
 	INT 21H
-	MOV MUSTYPE, 0						    	; 修改音乐类型为警告
+	MOV MUS_TYPE, 0						    	; 修改音乐类型为警告
 	CALL MUSIC									; 调用报错音
 	JMP SELECT									; 回到选择功能
 GEND0:
@@ -104,7 +108,7 @@ GAME1:
 	INT 10H										; 设置80*25黑白方式, 清空屏幕
 	CALL PRINT									; 打印棋盘
 HERE1:
-	MOV DX,OFFSET PUT							; 放置棋子的提示语句
+	MOV DX,OFFSET STR_PUT						; 放置棋子的提示语句
 	MOV AH,09H									; 在屏幕上显示输入的内容
 	INT 21H
 	MOV AH,1									; 若输入的是ESC则退出
@@ -114,7 +118,7 @@ HERE1:
 	JMP INPUTXY									; 否则输入坐标X Y
 QUIT:											; 退出游戏的信息
 	MOV STATE,2									; 把STATE的值设为2
-	MOV DX,OFFSET EXIT							; 有人退出就显示退出消息
+	MOV DX,OFFSET STR_EXIT						; 有人退出就显示退出消息
 	MOV AH,09H									; 使用21H号中断的显示输入功能
 	INT 21H 
 	JMP GEND1									; 游戏结束
@@ -152,7 +156,7 @@ THERE1:
 	CALL PRINT									; 打印棋盘
 	CMP OVER,1									; 游戏结束																		
 	JNZ HERE1
-	MOV DX,OFFSET GAMEEND						; 游戏结束的信息提示
+	MOV DX,OFFSET STR_GAMEEND					; 游戏结束的信息提示
     MOV AH,09H									; 在屏幕上显示输入的内容
     INT 21H
     MOV AH,02H									; 使用10H中断的设置位置功能																							
@@ -160,14 +164,14 @@ THERE1:
     MOV DH,11H									; 设置光标的列坐标
     INT 10H
     MOV STATE,3									; 游戏结束我退出
-	MOV MUSTYPE,1								; 修改音乐类型为胜利
+	MOV MUS_TYPE,1								; 修改音乐类型为胜利
     CALL MUSIC									; 播放音乐
 GEND1:
 	MOV AH,4CH									; 退出游戏
 	INT 21H
 ; =========/*人机*/========
 GAME2:											; 人机模式
-    MOV DX,OFFSET COLOR               			
+    MOV DX,OFFSET STR_COLOR               			
     MOV AH,09H									; 在屏幕上显示输入的内容
     INT 21H
     MOV AH,1									; 选择棋子颜色, 1黑子, 2白子
@@ -178,10 +182,10 @@ GAME2:											; 人机模式
 	JE CHESSWHITE								; 2为白子
 	CMP AL,27									; 若输入的是ESC
     JE GEND1									; 则退出
-	MOV DX,OFFSET WRONG							; 显示错误的提示信息
+	MOV DX,OFFSET STR_WRONG						; 输入不合规, 要求重新输入
 	MOV AH,09H									; 在屏幕上显示输入的内容
 	INT 21H
-	MOV MUSTYPE, 0						    	; 修改音乐类型为警告
+	MOV MUS_TYPE, 0						    	; 修改音乐类型为警告
 	CALL MUSIC									; 调用报错音
 	JMP GAME2									; 游戏结束
 CHESSBLACK:                               		; 若执黑则后行, 将我方棋子改为MY=1, ORDER改为2
@@ -196,7 +200,7 @@ CHESSWHITE:										; 若执白先行, 将我方棋子改为白MY=2, ORDER改�
 HERE2:
 	CMP STATE,0									; 根据STATE输出提示信息
 	JE SHOW										; 应该是我下, 跳转至SHOW
-	MOV DX,OFFSET WAIT1							; 应该是对方下, 提示等待
+	MOV DX,OFFSET STR_WAIT1						; 应该是对方下, 提示等待
 	MOV AH,09H
 	INT 21H										; 输出请等待的信息
 	MOV AH,02H
@@ -224,7 +228,7 @@ ROBOT:
 	MOV STATE,0									; 机器下完, 改变STATE
 	JMP HERE2                                   ; 机器下完我下
 SHOW:
-	MOV DX,OFFSET PUT							; 提示落子信息
+	MOV DX,OFFSET STR_PUT						; 放置棋子的提示语句
 	MOV AH,09H									; 在屏幕上显示输入的内容
 	INT 21H
 	MOV AH,1									; 若输入的是ESC则退出
@@ -233,16 +237,16 @@ SHOW:
 	JE IQUIT									; 我退出
 	JMP INPUTXY2								; 否则输入坐标X Y
 ILOSE:											; “我输了”的处理程序
-	MOV DX,OFFSET SORRY							; 提示抱歉信息
+	MOV DX,OFFSET STR_SORRY						; 提示抱歉信息
 	MOV AH,09H									; 在屏幕上显示输入的内容
 	INT 21H
-	MOV MUSTYPE,2								; 修改音乐类型为失败
+	MOV MUS_TYPE,2								; 修改音乐类型为失败
 	CALL MUSIC									; 调用播放音乐
 	JMP GEND2									; 游戏结束信息提示
 IQUIT:											; “我退出”的处理程序
 	MOV STATE,3									; 对方已获胜
 HQUIT:											; “对方退出”的处理程序
-	MOV DX,OFFSET EXIT							; 有人退出就显示退出消息
+	MOV DX,OFFSET STR_EXIT						; 有人退出就显示退出消息
 	MOV AH,09H									; 在屏幕上显示对方退出的信息
 	INT 21H
 	JMP GEND2									; 游戏结束信息提示
@@ -295,7 +299,7 @@ L2:
 	MOV STATE,1									; 否则将STATE置1, 表示我已下完, 等待对方的X
 	JMP HERE2
 IWIN:											; 我赢了则显示祝贺信息并播放音乐
-	MOV DX,OFFSET CONGRA						; 祝贺信息显示
+	MOV DX,OFFSET STR_CONGRA					; 祝贺信息显示
 	MOV AH,09H									; 在屏幕上显示输入的内容
 	INT 21H
 	MOV AH,02H
@@ -303,7 +307,7 @@ IWIN:											; 我赢了则显示祝贺信息并播放音乐
 	MOV DH,10H									; 光标的列坐标
 	INT 10H										; 屏幕上显示我胜利的信息
 	MOV STATE,2									; 我赢了	
-	MOV MUSTYPE, 1								; 修改音乐类型为胜利				
+	MOV MUS_TYPE, 1								; 修改音乐类型为胜利				
 	CALL MUSIC									; 播放音乐
 GEND2:
 	MOV AH,4CH									; 退出游戏
@@ -354,10 +358,10 @@ SUBXY:
 	JNE RETURNC  								; 若此处没有棋子, 输入合法
 INPUTERR:
     MOV FLAG,0                           		; 对于不合法的输入, 显示错误信息, 并播放报错音乐
-	MOV DX,OFFSET ERROR
+	MOV DX,OFFSET STR_ERROR
 	MOV AH,09H									; 在屏幕上显示输入错误的信息
     INT 21H
-	MOV MUSTYPE, 0						    	; 修改音乐类型为警告
+	MOV MUS_TYPE, 0						    	; 修改音乐类型为警告
 	CALL MUSIC									; 调用报错音
 RETURNC:
     POP DX										; 恢复CPU现场
@@ -538,7 +542,7 @@ CHECKPLACE PROC NEAR
 	JNE FINISHCHECK								; 若此处没有棋子, 输入合法
 INPUTERR2:
     MOV FLAG,0                           		; 对于不合法的输入, 显示错误信息
-	;  MOV DX,OFFSET WAIT1						; 应该是对方下, 提示等待
+	;  MOV DX,OFFSET STR_WAIT1						; 应该是对方下, 提示等待
 	;  MOV AH,09H
 	;  INT 21H									; 输出请等待的信息
 FINISHCHECK:					                                  
@@ -1205,9 +1209,9 @@ WAITF ENDP
 MUSIC PROC NEAR
     MOV AX, DATA
     MOV DS, AX
-	CMP MUSTYPE, 1								; 判断音乐类型
+	CMP MUS_TYPE, 1								; 判断音乐类型
 	JE MUS_T1
-	CMP MUSTYPE, 2
+	CMP MUS_TYPE, 2
 	JE MUS_T2
 	ADDRESS MUS_FREQ0, MUS_TIME0				; 取音乐0的地址
 	JMP MUSSTT
