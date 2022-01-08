@@ -1,8 +1,6 @@
 DATA SEGMENT
-	BLACK EQU 1          ; 黑棋
-	WHITE EQU 2          ; 白棋
-	CHESSBOARD DB 218,13 DUP(194),191,13 DUP(195,13 DUP(197),180),192,13 DUP(193),217 	; 设置棋盘的缓冲区, 1黑棋 2白棋
-	CLEAN DB 72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,'$'; 更新棋盘
+	BLACK EQU 1         							  ; 黑棋
+	WHITE EQU 2          							  ; 白棋
 	X DB 0										      ; 落子坐标 x
 	Y DB 0                                            ; 落子坐标 y
 	MY DB 1										      ; 自己的棋子颜色, 1黑棋 2白棋
@@ -12,7 +10,6 @@ DATA SEGMENT
 	OVER DB 0									      ; 判断是否比赛结束, 0为没有结束, 1为结束。结束时, 最后落子方获胜
     S1 DB 0                             		      ; 用于保存输入坐标值x
     S2 DB 0										      ; 用于保存输入坐标值y
-    NEXTSTEP DB 1                          	 	      ; 判断该下黑子还是白子, 0黑棋, 1白棋, 默认为1白棋先行
     ORDER DB 1                          		      ; 人机时标志先手or后手, 1表示先手, 2表示后手
 	SCORE DW 1                                        ; 当前位置的分数
 	MAXSCORE1 DW 0                                    ; 第一层网络最高分数
@@ -23,29 +20,37 @@ DATA SEGMENT
 	NUMM DW 0									      ; 已下棋子的个数
 	CHESSMODEL DB 9 DUP(0)						      ; 棋形
 	CHESSSCORE DW 3,2,5,10,8,200,200,1000,10000       ; 棋形对应的分数
-	FIRSTLINE DB ' 1 2 3 4 5 6 7 8 9 A B C D E F','$' ; 棋盘的y坐标
-	STR_ERROR DB 'YOU CANNOT PUT HERE!',0AH,0DH,'$' 	  ; 报错,"你不能放在这里"
-    STR_WRONG DB 0AH,0DH,'FALSE INPUT!',0AH,0DH,'$'		  ; 错误信息的提示
-    STR_COLOR DB 0AH,0DH,'PLEASE CHOOSE YOUR CHESSMAN COLOR:(1 FOR BLACK, 2 FOR WHITE)',0AH,0DH,'$'	; 选棋子的颜色, 1是黑色, 2是白色
-    STR_PUT DB 'PLEASE INPUT THE POSITION(X Y):',0AH,0DH,'$'			; 请输入棋子的位置(x,y)
-    STR_GAMEEND DB 'ONE PLAYER HAS WIN!',0AH,0DH,'$'					; 游戏结束信息提示
-    STR_CONGRA DB 'YOU WIN! CONGRATULATIONS!',0AH,0DH,'$'				; 游戏提示信息,"恭喜!你赢了!"
-    STR_SORRY DB 'YOU LOSE! DONNOT GIVE UP!',0AH,0DH,'$'				; 游戏提示信息,"对不起,你输了,不要放弃!"
-    STR_WAIT1 DB 'PLEASE WAIT...',0AH,0DH,'$'  							; 进入等待信息提示 
-    STR_CHOOSE1 DB 'WELCOME! PLEASE CHOOSE GAME MODE:',0AH,0DH,'$'		; 游戏模式提示1
-	STR_CHOOSE2 DB 'PRESS 1 FOR ONE PLAYER (MAN VS CPU)',0AH,0DH,'PRESS 2 FOR TWO PLAYERS (MAN VS MAN)',0AH,0DH,'PRESS ESC TO QUIT',0AH,0DH,'$'	; 游戏模式提示2
-    STR_EXIT DB 'ONE PLAYER HAS QUIT!',0AH,0DH,'$'					; 一个玩家退出
-	MUS_TYPE DB 1								                    ; 音乐类型; 0报错, 1胜利, 2失败
-    MUS_FREQ0 DW 230,150,-1						                    ; 报错音频率
-	MUS_TIME0 DW 30,30							                    ; 报错音节拍
-	MUS_FREQ1 DW 270,270,270,190,230,270,250,270,-1					; 胜利音乐频率表, -1为音乐播放结束符
-    MUS_TIME1 DW 3 DUP (30),50,50,30,30,80  						; 失败音乐节拍
-	MUS_FREQ2 DW 230, 260, 260, 260, 230, 200, 170, -1				; 失败音乐频率表, -1为音乐播放结束符
-	MUS_TIME2 DW 50, 30, 30, 30, 30, 30, 50							; 失败音乐节拍
+	CHESSBOARD DB 218,13 DUP(194),191,13 DUP(195,13 DUP(197),180),192,13 DUP(193),217 	; 存储棋盘的信息, 同时可用于打印; 1黑棋 2白棋; 其余为构成棋盘的字符
+	CLEANBOARD DB 72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,'$'; 空白棋盘
+	FLAG_NEXTSTEP DB 1                          	  					; 判断该下黑子还是白子, 0黑棋, 1白棋, 默认为1白棋先行
+	FLAG_TRANS DB 0									  					; 用于判断代码是否要中转(套娃跳转), 默认不需要
+	FIRSTLINE DB ' 1 2 3 4 5 6 7 8 9 A B C D E F','$' 					; 棋盘的y坐标
+	STR_ERROR DB 'You Cannot Put Here!',0AH,0DH,'$' 	  				; 报错,"你不能放在这里"
+    STR_WRONG DB 0AH,0DH,'Please Enter 1 OR 2!',0AH,0DH,'$'		 		; 错误信息的提示
+    STR_COLOR DB 0AH,0DH,'Please Choose Your Chessman Color:(1 For Black, 2 For White)',0AH,0DH,'$'	; 选棋子的颜色, 1是黑色, 2是白色
+	STR_PUT_WHITE DB '[White] ', '$'									; 用于提示当前是谁的回合
+	STR_PUT_BLACK DB '[Black] ', '$'									; 用于提示当前是谁的回合
+    STR_PUT DB 'Please Enter The Position(X Y):','$'					; 请输入棋子的位置(x,y)
+    STR_GAMEEND DB 'One Player Has WIN!',0AH,0DH,'$'					; 游戏结束信息提示
+	STR_WIN_B DB 'Black WINS!!', '$'
+	STR_WIN_W DB 'White WINS!!', '$'
+    STR_WIN DB 'You WIN! Congratulations!',0AH,0DH,'$'					; 游戏提示信息,"恭喜!你赢了!"
+    STR_SORRY DB 'You LOSE! Donnot Give Up!',0AH,0DH,'$'				; 游戏提示信息,"对不起,你输了,不要放弃!"
+    STR_WAIT1 DB 'Please Wait...',0AH,0DH,'$'  							; 进入等待信息提示 
+    STR_CHOOSE1 DB 'WELCOME! Please Choose Game Mode:',0AH,0DH,'$'		; 游戏模式提示1
+	STR_CHOOSE2 DB 'Press 1 For One Player (MAN VS CPU)',0AH,0DH,'Press 2 For Two Players (MAN VS MAN)',0AH,0DH,'Press ESC To Quit',0AH,0DH,'$'	; 游戏模式提示2
+    STR_EXIT DB 0AH,0DH, 'One Player Has Quit!',0AH,0DH,'$'				; 一个玩家退出
+	MUS_TYPE DB 1								                    	; 音乐类型; 0报错, 1胜利, 2失败
+    MUS_FREQ0 DW 230,150,-1						                    	; 报错音频率表
+	MUS_TIME0 DW 30,30							                    	; 报错音节拍表
+	MUS_FREQ1 DW 270,270,270,190,230,270,250,270,-1						; 胜利音乐频率表, -1为音乐播放结束符
+	MUS_TIME1 DW 3 DUP (30),50,50,30,30,80  							; 胜利音乐节拍
+	MUS_FREQ2 DW 230, 260, 260, 260, 230, 200, 170, -1					; 失败音乐频率表, -1为音乐播放结束符
+	MUS_TIME2 DW 50, 30, 30, 30, 30, 30, 50								; 失败音乐节拍
 
 DATA ENDS
 INISTACK SEGMENT STACK
-	DW 128H DUP(0)									; 初始化堆栈						
+	DW 128H DUP(0)								; 初始化堆栈						
 INISTACK ENDS
 
 ADDRESS MACRO A,B
@@ -87,9 +92,9 @@ SELECT:                                 		; 选择功能
     MOV AH,1									; 使用21H中断的显示输入功能						
 	INT 21H
 	CMP AL,'2'                         			; 2为双人(人人)
-	JE GAME1									; 输入为1, 双人模式
+	JE GAME1									; 输入为2, 双人模式
 	CMP AL,'1'                          		; 1为单人(人机)
-	JZ MARK										; 输入为1, 进入积分
+	JZ MARK										; 输入为1, 单人模式
 	CMP AL,27                           		; 输入为ESC, 退出
     JZ GEND0									; 游戏结束
 	MOV DX,OFFSET STR_WRONG      				; 输入不合规, 要求重新输入
@@ -108,6 +113,13 @@ GAME1:
 	INT 10H										; 设置80*25黑白方式, 清空屏幕
 	CALL PRINT									; 打印棋盘
 HERE1:
+	MOV DX, OFFSET STR_PUT_BLACK
+	CMP FLAG_NEXTSTEP, 0						; 当前为黑子回合
+	JE PRINTTURN 
+	MOV DX, OFFSET STR_PUT_WHITE				; 当前为白子回合
+PRINTTURN:
+	MOV AH,09H									; 在屏幕上显示当前是谁的回合
+	INT 21H
 	MOV DX,OFFSET STR_PUT						; 放置棋子的提示语句
 	MOV AH,09H									; 在屏幕上显示输入的内容
 	INT 21H
@@ -124,6 +136,10 @@ QUIT:											; 退出游戏的信息
 	JMP GEND1									; 游戏结束
 MARK:											
     JMP GAME2									; 人机模式
+MARK2:
+	CMP FLAG_TRANS, 1							; 判断是否需要中转
+	JE HERE1									; 需要中转
+	MOV FLAG_TRANS, 0							; 无需中转, 重新设置FLAG
 INPUTXY:										; 记录坐标X Y(ASCII码)
 	MOV X,AL									; 记录x的坐标
 	INT 21H										; 显示在屏幕上x的值
@@ -154,9 +170,15 @@ THERE1:
 	CALL PUTDOWN								; 落子
 	CALL ISWIN									; 判断输赢, 有结果则OVER=1
 	CALL PRINT									; 打印棋盘
+	MOV FLAG_TRANS, 1							; 当前需要中转
 	CMP OVER,1									; 游戏结束																		
-	JNZ HERE1
-	MOV DX,OFFSET STR_GAMEEND					; 游戏结束的信息提示
+	JNZ MARK2					
+	MOV FLAG_TRANS, 0							; 当前无需中转
+	MOV DX,OFFSET STR_WIN_W						; 游戏结束的信息提示, 黑子获胜
+	CMP FLAG_NEXTSTEP, 0
+	JE PRINTRES
+	MOV DX,OFFSET STR_WIN_B						; 游戏结束的信息提示, 白子获胜
+PRINTRES:	
     MOV AH,09H									; 在屏幕上显示输入的内容
     INT 21H
     MOV AH,02H									; 使用10H中断的设置位置功能																							
@@ -228,6 +250,13 @@ ROBOT:
 	MOV STATE,0									; 机器下完, 改变STATE
 	JMP HERE2                                   ; 机器下完我下
 SHOW:
+	MOV DX, OFFSET STR_PUT_BLACK
+	CMP FLAG_NEXTSTEP, 0						; 当前为黑子回合
+	JE PRINTTURN1 
+	MOV DX, OFFSET STR_PUT_WHITE				; 当前为白子回合
+PRINTTURN1:
+	MOV AH,09H									; 在屏幕上显示当前是谁的回合
+	INT 21H
 	MOV DX,OFFSET STR_PUT						; 放置棋子的提示语句
 	MOV AH,09H									; 在屏幕上显示输入的内容
 	INT 21H
@@ -269,11 +298,7 @@ N2:	MOV AH,07									; 无回显输入
 	MOV DL,0AH									; 输出回车换行
 	INT 21H
 	MOV DL,0DH									; 光标的行坐标
-	INT 21H										; 输出回车换行
-    ; mov AL,X                            		; 保存输入的坐标值x用于以后发送
-    ; mov S1,AL																								
-    ; mov AL,Y									; 保存输入的坐标值y用于以后发送
-    ; mov S2,AL																															
+	INT 21H										; 输出回车换行																														
 	MOV FLAG,1									
 	CALL CHECK									; 检查可否落子
 	CMP FLAG,1									; flag=1, 可以落子
@@ -289,24 +314,20 @@ L1:
 L2:
 	CALL PUTDOWN								; 落子
 	CALL ISWIN									; 判断输赢, 赢了则OVER=1
-	CALL PRINT									; 打印棋盘
-    ; mov AL,S1																								
-    ; mov X,AL									; 保存输入的坐标值x用于以后发送
-    ; mov AL,S2
-    ; mov Y,AL        							; 保存输入的坐标值y用于以后发送                                                
+	CALL PRINT									; 打印棋盘                                             
 	CMP OVER,1									; 判断我是否赢了
 	JE IWIN										; 赢了, 则跳转到IWIN子程序
 	MOV STATE,1									; 否则将STATE置1, 表示我已下完, 等待对方的X
 	JMP HERE2
-IWIN:											; 我赢了则显示祝贺信息并播放音乐
-	MOV DX,OFFSET STR_CONGRA					; 祝贺信息显示
+IWIN:											; 我赢了则显示祝贺信息, 播放胜利音乐
+	MOV DX,OFFSET STR_WIN						; 获胜信息显示
 	MOV AH,09H									; 在屏幕上显示输入的内容
 	INT 21H
 	MOV AH,02H
 	MOV DL,00H									; 光标从16,0开始
-	MOV DH,10H									; 光标的列坐标
-	INT 10H										; 屏幕上显示我胜利的信息
-	MOV STATE,2									; 我赢了	
+	MOV DH,10H									; 
+	INT 10H										; 修改光标位置
+	MOV STATE,2									; 修改状态为胜利	
 	MOV MUS_TYPE, 1								; 修改音乐类型为胜利				
 	CALL MUSIC									; 播放音乐
 GEND2:
@@ -375,14 +396,14 @@ PUTDOWN PROC NEAR
 	PUSH AX										; 保存CPU现场
 	PUSH BX
     GET_CB_ADDRESS X,Y                          ; 获取点X,Y的地址,放到BX
-	CMP NEXTSTEP,0                         	 	; 根据NEXTSTEP值, 轮流放置黑子和白子
+	CMP FLAG_NEXTSTEP,0                         ; 根据FLAG_NEXTSTEP值, 轮流放置黑子和白子
 	JE PUTBLACK
 	MOV CHESSBOARD[BX],WHITE					; 放白棋
-	MOV NEXTSTEP,0								; 改变NEXTSTEP的值, 下一步为黑子
+	MOV FLAG_NEXTSTEP,0							; 改变FLAG_NEXTSTEP的值, 下一步为黑子
 	JMP ENDPUT
 PUTBLACK:	
     MOV CHESSBOARD[BX],BLACK					; 放黑棋
-    MOV NEXTSTEP,1								; 改变NEXTSTEP的值, 下一步为白子
+    MOV FLAG_NEXTSTEP,1							; 改变FLAG_NEXTSTEP的值, 下一步为白子
 ENDPUT:
     INC NUMM	                                ; 棋子数量加1
 	POP BX
@@ -542,9 +563,6 @@ CHECKPLACE PROC NEAR
 	JNE FINISHCHECK								; 若此处没有棋子, 输入合法
 INPUTERR2:
     MOV FLAG,0                           		; 对于不合法的输入, 显示错误信息
-	;  MOV DX,OFFSET STR_WAIT1						; 应该是对方下, 提示等待
-	;  MOV AH,09H
-	;  INT 21H									; 输出请等待的信息
 FINISHCHECK:					                                  
 	POP BX
 	POP AX
@@ -1023,7 +1041,7 @@ ISWIN PROC NEAR
 LOOPY:
 	GET_CB_ADDRESS X,Y                          ; 获取点X,Y的地址,放到BX
 	MOV DL,CHESSBOARD[BX]               																	
-	CMP NEXTSTEP,0                         		; NEXTSTEP=0,判断白子是否获胜
+	CMP FLAG_NEXTSTEP,0                         ; FLAG_NEXTSTEP=0,判断白子是否获胜
 	JZ WISWIN
 	CMP DL,BLACK								; 判断黑子是否获胜
 	JE PANDUAN									; 判断黑子是否可以连成5个
@@ -1141,7 +1159,7 @@ NEXTLINE:
 	MOV Y,0										; 复位Y, 使回到新行的第一位
     CMP X,15									; 如果棋盘没有全部打印完成
 	JNE LOOP2									; 跳转至循环部分继续打印
-    MOV DX,OFFSET CLEAN							; 否则更新屏幕的信息提示
+    MOV DX,OFFSET CLEANBOARD					; 否则清空棋盘
     MOV AH,09H									
     INT 21H
     MOV AH,02H									; 使用INT 10H(BIOS中断)的设置光标位置功能:DH=行, DL=列
