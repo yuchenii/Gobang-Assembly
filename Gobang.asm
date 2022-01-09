@@ -4,12 +4,8 @@ DATA SEGMENT
 	X DB 0										      ; 落子坐标 x
 	Y DB 0                                            ; 落子坐标 y
 	MY DB 1										      ; 自己的棋子颜色, 1黑棋 2白棋
-	FLAG DB 0									      ; 判断是否可以落子的标记, 1为可以, 0为不可以
 	STATE DB 0									      ; 目前的状态, 双人:0为游戏进行中, 2为一方退出；3为一方获胜
-											          ; 0该我下, 1我已经下完, 等待接受X；2等待接受Y；4对方获胜, 5对方退出
-	OVER DB 0									      ; 判断是否比赛结束, 0为没有结束, 1为结束。结束时, 最后落子方获胜
-    S1 DB 0                             		      ; 用于保存输入坐标值x
-    S2 DB 0										      ; 用于保存输入坐标值y
+											          ; 人机:0该我下, 1我已经下完，对方下；4对方获胜, 5对方退出
     ORDER DB 1                          		      ; 人机时标志先手or后手, 1表示先手, 2表示后手
 	SCORE DW 1                                        ; 当前位置的分数
 	MAXSCORE1 DW 0                                    ; 第一层网络最高分数
@@ -17,12 +13,14 @@ DATA SEGMENT
 	X1 DB 0                                           ; 第一层网络最高分数的坐标x
 	Y1 DB 0                                           ; 第一层网络最高分数的坐标y
 	CB1 DB 197  								      ; X1,Y1对应的棋盘缓冲区的值
-	NUMM DW 0									      ; 已下棋子的个数
-	CHESSMODEL DB 9 DUP(0)						      ; 棋形
-	CHESSSCORE DW 3,2,5,10,8,200,200,1000,10000       ; 棋形对应的分数
+	CHESSMODEL DB 9 DUP(0)						      ; 9种棋形2XXX,0XXX,12XX,10XX,112X,110X,1112,1110,1111对应的个数
+	CHESSSCORE DW 3,2,5,10,8,200,200,1000,10000       ; 9种棋形2XXX,0XXX,12XX,10XX,112X,110X,1112,1110,1111对应的分数
 	CHESSBOARD DB 218,13 DUP(194),191,13 DUP(195,13 DUP(197),180),192,13 DUP(193),217 	; 存储棋盘的信息, 同时可用于打印; 1黑棋 2白棋; 其余为构成棋盘的字符
 	CLEANBOARD DB 72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,72 DUP(32),0AH,0DH,'$'; 空白棋盘
+	FLAG_PUTDOWN DB 0								  					; 判断是否可以落子的标记, 1为可以, 0为不可以
 	FLAG_NEXTSTEP DB 1                          	  					; 判断该下黑子还是白子, 0黑棋, 1白棋, 默认为1白棋先行
+	FLAG_NUM DW 0									      				; 已下棋子的个数
+	FLAG_OVER DB 0									  					; 判断是否比赛结束, 0为没有结束, 1为结束。默认为0，结束时, 最后落子方获胜
 	FLAG_TRANS DB 0									  					; 用于判断代码是否要中转(套娃跳转), 默认不需要
 	FIRSTLINE DB ' 1 2 3 4 5 6 7 8 9 A B C D E F','$' 					; 棋盘的y坐标
 	STR_ERROR DB 'You Cannot Put Here!',0AH,0DH,'$' 	  				; 报错,"你不能放在这里"
@@ -160,18 +158,17 @@ N1:	MOV AH,07									; 无回显输入
 	INT 21H										; 输出回车换行
 	MOV DL,0DH									; 显示光标的列坐标
 	INT 21H										; 输出回车换行
-	MOV FLAG,1									; flag的值为1
 	CALL CHECK									; 检查可否落子, 将X, Y的ASCII值改变为真实的数值
-	CMP FLAG,1									; 可以落子
+	CMP FLAG_PUTDOWN,1							; 可以落子
 	JE THERE1									; 可以落子则判断落子后输赢
 	JMP HERE1									; 如果不可以落子则重新输入
 THERE1:
 	MOV MY,1									; 我的坐标是1, 对方的坐标是2
 	CALL PUTDOWN								; 落子
-	CALL ISWIN									; 判断输赢, 有结果则OVER=1
+	CALL ISWIN									; 判断输赢, 有结果则FLAG_OVER=1
 	CALL PRINT									; 打印棋盘
 	MOV FLAG_TRANS, 1							; 当前需要中转
-	CMP OVER,1									; 游戏结束																		
+	CMP FLAG_OVER,1								; 游戏结束																		
 	JNZ MARK2					
 	MOV FLAG_TRANS, 0							; 当前无需中转
 	MOV DX,OFFSET STR_WIN_W						; 游戏结束的信息提示, 黑子获胜
@@ -212,7 +209,7 @@ GAME2:											; 人机模式
 	JMP GAME2									; 游戏结束
 CHESSBLACK:                               		; 若执黑则后行, 将我方棋子改为MY=1, ORDER改为2
     MOV MY,BLACK								; 我执黑棋, 对方执白棋
-    MOV STATE,1									; 我已下完, 正等待接收x
+    MOV STATE,1									; 选的黑子，对方先下
     MOV ORDER,2									; 等待对方落子
 CHESSWHITE:										; 若执白先行, 将我方棋子改为白MY=2, ORDER改为1
 	MOV AL,2  
@@ -232,7 +229,7 @@ HERE2:
 WW:	
 	CMP STATE,0									; 根据STATE输出提示信息
 	JE SHOW										; 如果是我下, 转至SHOW
-	CMP STATE,1	;                               ; STATE为1, 则机器下
+	CMP STATE,1	                                ; STATE为1, 则机器下
 	JE ROBOT									; 跳转至ROBOT,机器落子
 	CMP STATE,4									; 如果对方胜利
 	JE ILOSE									; 																		
@@ -240,12 +237,11 @@ WW:
 	JE HQUIT									
 	JMP WW
 ROBOT:
-    MOV FLAG,1
     CALL FINDPLACE						        ; 机器寻找最优的落子位置
 	CALL PUTDOWN							    ; 机器落子
 	CALL ISWIN                                  ; 判断是否赢了
 	CALL PRINT									; 打印棋盘
-	CMP OVER,1                                  ; 判断游戏是否结束
+	CMP FLAG_OVER,1                             ; 判断游戏是否结束
 	JE ILOSE									; 机器胜利
 	MOV STATE,0									; 机器下完, 改变STATE
 	JMP HERE2                                   ; 机器下完我下
@@ -298,10 +294,9 @@ N2:	MOV AH,07									; 无回显输入
 	MOV DL,0AH									; 输出回车换行
 	INT 21H
 	MOV DL,0DH									; 光标的行坐标
-	INT 21H										; 输出回车换行																														
-	MOV FLAG,1									
+	INT 21H										; 输出回车换行							
 	CALL CHECK									; 检查可否落子
-	CMP FLAG,1									; flag=1, 可以落子
+	CMP FLAG_PUTDOWN,1							; FLAG_PUTDOWN=1, 可以落子
 	JE THERE2									; 可以落子则判断落子
 	JMP HERE2									; 如果不可以落子则重新输入
 THERE2:
@@ -313,11 +308,11 @@ L1:
     MOV MY,BLACK								; 我是黑棋, 对方是白棋
 L2:
 	CALL PUTDOWN								; 落子
-	CALL ISWIN									; 判断输赢, 赢了则OVER=1
+	CALL ISWIN									; 判断输赢, 赢了则FLAG_OVER=1
 	CALL PRINT									; 打印棋盘                                             
-	CMP OVER,1									; 判断我是否赢了
+	CMP FLAG_OVER,1								; 判断我是否赢了
 	JE IWIN										; 赢了, 则跳转到IWIN子程序
-	MOV STATE,1									; 否则将STATE置1, 表示我已下完, 等待对方的X
+	MOV STATE,1									; 否则将STATE置1, 表示我已下完
 	JMP HERE2
 IWIN:											; 我赢了则显示祝贺信息, 播放胜利音乐
 	MOV DX,OFFSET STR_WIN						; 获胜信息显示
@@ -339,6 +334,7 @@ CHECK PROC NEAR									; 检验落子位置是否合法
 	PUSH BX
 	PUSH CX
 	PUSH DX
+	MOV FLAG_PUTDOWN,1							; 初始化FLAG_PUTDOWN为1
     MOV CX,2                                 	; 循环两次,分别判断X和Y是否合法
 	MOV AL,X                                 	; X 放入 AL
 CMPD:	                                     	; 大小写转换, 检查是否在棋盘范围内
@@ -378,7 +374,7 @@ SUBXY:
 	CMP CHESSBOARD[BX],WHITE					
 	JNE RETURNC  								; 若此处没有棋子, 输入合法
 INPUTERR:
-    MOV FLAG,0                           		; 对于不合法的输入, 显示错误信息, 并播放报错音乐
+    MOV FLAG_PUTDOWN,0                          ; 对于不合法的输入, 显示错误信息, 并播放报错音乐
 	MOV DX,OFFSET STR_ERROR
 	MOV AH,09H									; 在屏幕上显示输入错误的信息
     INT 21H
@@ -405,7 +401,7 @@ PUTBLACK:
     MOV CHESSBOARD[BX],BLACK					; 放黑棋
     MOV FLAG_NEXTSTEP,1							; 改变FLAG_NEXTSTEP的值, 下一步为白子
 ENDPUT:
-    INC NUMM	                                ; 棋子数量加1
+    INC FLAG_NUM	                            ; 棋子数量加1
 	POP BX
 	POP AX
 	RET										    ; 子程序结束返回
@@ -433,7 +429,7 @@ IMBLACK:
     MOV DL,WHITE    							; 机器是白棋
 	MOV DH,BLACK    							; 玩家是黑棋
 ISFIRST:
-	CMP NUMM,0                                 	; 判断是不是首颗棋子
+	CMP FLAG_NUM,0                              ; 判断是不是首颗棋子
 	JNE FIND                                   	; 不是首颗棋子, 跳转到FIND
 	MOV BL,7                                   	; 是首颗棋子, 则下正中间的位置
 	MOV BH,7
@@ -443,9 +439,8 @@ FIND:
 	MOV X1,AL                                  	; 临时保存现在的坐标x到x1
 	MOV AL,Y
 	MOV Y1,AL                                  	; 临时保存现在的坐标y到y1
-	MOV FLAG,1
 	CALL CHECKPLACE 						    ; 检查当前坐标是否合法
-	CMP FLAG,0                                  ; 如果不能落子
+	CMP FLAG_PUTDOWN,0                          ; 如果不能落子
     JE NEXTY                                    ; 则继续寻找
 	MOV SCORE,1                                 ; 重置分数
 	CALL CALSCORE							    ; 计算当前位置分数
@@ -505,9 +500,8 @@ FINDPLACE2 PROC NEAR
 	MOV SCORE,1                                 ; 初始化分数
 	MOV MAXSCORE2,0							    ; 初始化最大分数
 FIND2:
-	MOV FLAG,1
 	CALL CHECKPLACE 						    ; 检查当前坐标是否合法
-	CMP FLAG,0                                  ; 如果不能落子
+	CMP FLAG_PUTDOWN,0                          ; 如果不能落子
     JE NEXTY2                                   ; 则继续寻找
 	MOV SCORE,1                                 ; 重置分数
 	CALL CALSCORE							    ; 计算当前位置分数
@@ -547,7 +541,7 @@ FINDPLACE2 ENDP
 CHECKPLACE PROC NEAR
 	PUSH AX										; 保存CPU现场
 	PUSH BX
-	MOV FLAG,1
+	MOV FLAG_PUTDOWN,1							; 初始化FLAG_PUTDO为1
 	CMP X,0
 	JL INPUTERR2							    ; 如果x<0,则输入错误
 	CMP X,14
@@ -562,7 +556,7 @@ CHECKPLACE PROC NEAR
 	CMP CHESSBOARD[BX],WHITE					
 	JNE FINISHCHECK								; 若此处没有棋子, 输入合法
 INPUTERR2:
-    MOV FLAG,0                           		; 对于不合法的输入, 显示错误信息
+    MOV FLAG_PUTDOWN,0                          ; 对于不合法的输入, 显示错误信息
 FINISHCHECK:					                                  
 	POP BX
 	POP AX
@@ -644,34 +638,34 @@ SCORE1 PROC NEAR								; 横向判断子程序
 SC11:
     CMP DH,CHESSBOARD[BX+1]
 	JE SC111
-	INC CHESSMODEL[1]                          	; 0XXX,2分  
+	INC CHESSMODEL[1]                          	; 0XXX  
 	JMP SC10
 SC111:
-	INC CHESSMODEL[0]                          	; 2XXX, 3分   
+	INC CHESSMODEL[0]                          	; 2XXX  
 	JMP SC10
 SC12:
     CMP DH,CHESSBOARD[BX+2]
 	JE SC121
-	INC CHESSMODEL[3]                           ; 10XX,10分
+	INC CHESSMODEL[3]                           ; 10XX
 	JMP SC10
 SC121:
-	INC CHESSMODEL[2]                           ; 12XX,5分
+	INC CHESSMODEL[2]                           ; 12XX
 	JMP SC10
 SC13:
 	CMP DH,CHESSBOARD[BX+3]
 	JE SC131
-	INC CHESSMODEL[5]                           ; 110X,200分
+	INC CHESSMODEL[5]                           ; 110X
 	JMP SC10
 SC131:
-    INC CHESSMODEL[4]                           ; 112X,8分
+    INC CHESSMODEL[4]                           ; 112X
 	JMP SC10	
 SC14:
 	CMP DH,CHESSBOARD[BX+4]
 	JE SC141
-	INC CHESSMODEL[7]                           ; 1110,1000分
+	INC CHESSMODEL[7]                           ; 1110
 	JMP SC10
 SC141:
-	INC CHESSMODEL[6]                           ; 1112,100分
+	INC CHESSMODEL[6]                           ; 1112
 SC10: 
     POP BX										; 恢复cpu现场
     RET											; 子程序结束返回 
@@ -693,34 +687,34 @@ SCORE2 PROC NEAR								; 纵向判断子程序
 SC21:
    CMP DH,CHESSBOARD[BX+15]
    JE SC211
-   INC CHESSMODEL[1]                            ; 0XXX,2分  
+   INC CHESSMODEL[1]                            ; 0XXX  
    JMP SC20	
 SC211:
-	INC CHESSMODEL[0]                           ; 2XXX, 3分   
+	INC CHESSMODEL[0]                           ; 2XXX  
     JMP SC20
 SC22:
    	CMP DH,CHESSBOARD[BX+30]
    	JE SC221
-   	INC CHESSMODEL[3]                           ; 10XX,10分
+   	INC CHESSMODEL[3]                           ; 10XX
 	JMP SC20
 SC221:
-	INC CHESSMODEL[2]                           ; 12XX,5分
+	INC CHESSMODEL[2]                           ; 12XX
     JMP SC20
 SC23:
 	CMP DH,CHESSBOARD[BX+45]
 	JE SC231
-	INC CHESSMODEL[5]                           ; 110X,200分
+	INC CHESSMODEL[5]                           ; 110X
 	JMP SC20
 SC231:
-	INC CHESSMODEL[4]                           ; 112X,8分
+	INC CHESSMODEL[4]                           ; 112X
 	JMP SC20
 SC24:
 	CMP DH,CHESSBOARD[BX+60]
 	JE SC241
-	INC CHESSMODEL[7]                           ; 1110,1000分
+	INC CHESSMODEL[7]                           ; 1110
 	JMP SC20
 SC241:
-	INC CHESSMODEL[6]                           ; 1112,100分
+	INC CHESSMODEL[6]                           ; 1112
 SC20: 
    POP BX
    RET											; 子程序结束返回
@@ -744,34 +738,34 @@ SCORE3 PROC NEAR								; 斜上判断子程序
 SC31:
 	CMP DH,CHESSBOARD[BX-14]
    	JE SC311
-   	INC CHESSMODEL[1]                           ; 0XXX,2分  
+   	INC CHESSMODEL[1]                           ; 0XXX  
    	JMP SC30
 SC311:
-	INC CHESSMODEL[0]                           ; 2XXX, 3分   
+	INC CHESSMODEL[0]                           ; 2XXX  
 	JMP SC30
 SC32:
    	CMP DH,CHESSBOARD[BX-28]
    	JE SC321
-   	INC CHESSMODEL[3]                           ; 10XX,10分
+   	INC CHESSMODEL[3]                           ; 10XX
 	JMP SC30
 SC321:
-	INC CHESSMODEL[2]                           ; 12XX,5分
+	INC CHESSMODEL[2]                           ; 12XX
 	JMP SC30
 SC33:
 	CMP DH,CHESSBOARD[BX-42]
 	JE SC331
-	INC CHESSMODEL[5]                           ; 110X,200分
+	INC CHESSMODEL[5]                           ; 110X
 	JMP SC30
 SC331:
-	INC CHESSMODEL[4]                           ; 112X,8分
+	INC CHESSMODEL[4]                           ; 112X
 	JMP SC30
 SC34:
 	CMP DH,CHESSBOARD[BX-56]
 	JE SC341
-	INC CHESSMODEL[7]                           ; 1110,1000分
+	INC CHESSMODEL[7]                           ; 1110
 	JMP SC30
 SC341:
-	INC CHESSMODEL[6]                           ; 1112,100分
+	INC CHESSMODEL[6]                           ; 1112
 SC30: 
    POP BX
    RET											; 子程序结束返回
@@ -795,32 +789,32 @@ SCORE4 PROC NEAR								; 斜下判断子程序
 SC41:
 	CMP DH,CHESSBOARD[BX+16]
    	JE SC411
-   	INC CHESSMODEL[1]                           ; 0XXX,2分  
+   	INC CHESSMODEL[1]                           ; 0XXX  
    	JMP SC40
 SC411:
-	INC CHESSMODEL[0]                           ; 2XXX, 3分   
+	INC CHESSMODEL[0]                           ; 2XXX  
 	JMP SC40
 SC42:
    	CMP DH,CHESSBOARD[BX+32]
    	JE SC421
-   	INC CHESSMODEL[3]                           ; 10XX,10分
+   	INC CHESSMODEL[3]                           ; 10XX
 SC421:
-	INC CHESSMODEL[2]                           ; 12XX,5分
+	INC CHESSMODEL[2]                           ; 12XX
 	JMP SC40
 SC43:
 	CMP DH,CHESSBOARD[BX+48]
 	JE SC431
-	INC CHESSMODEL[5]                           ; 110X,200分
+	INC CHESSMODEL[5]                           ; 110X
 	JMP SC40
 SC431:
-	INC CHESSMODEL[4]                           ; 112X,8分
+	INC CHESSMODEL[4]                           ; 112X
 	JMP SC40
 SC44:
     CMP DH,CHESSBOARD[BX+64]
 	JE SC441
-	INC CHESSMODEL[7]                           ; 1110,1000分
+	INC CHESSMODEL[7]                           ; 1110
 SC441:
-	INC CHESSMODEL[6]                           ; 1112,100分																		
+	INC CHESSMODEL[6]                           ; 1112																		
 SC40: 
    POP BX
    RET											; 子程序结束返回
@@ -843,34 +837,34 @@ SCORE5 PROC NEAR
 SC51:
 	CMP DH,CHESSBOARD[BX-1]
 	JE SC511
-	INC CHESSMODEL[1]                           ; 0XXX,2分  
+	INC CHESSMODEL[1]                           ; 0XXX  
 	JMP SC50
 SC511:
-	INC CHESSMODEL[0]                           ; 2XXX, 3分   
+	INC CHESSMODEL[0]                           ; 2XXX  
 	JMP SC50
 SC52:
    	CMP DH,CHESSBOARD[BX-2]
    	JE SC521
-   	INC CHESSMODEL[3]                           ; 10XX,10分
+   	INC CHESSMODEL[3]                           ; 10XX
 	JMP SC50
 SC521:
-	INC CHESSMODEL[2]                           ; 12XX,5分
+	INC CHESSMODEL[2]                           ; 12XX
 	JMP SC50
 SC53:
 	CMP DH,CHESSBOARD[BX-3]
 	JE SC531
-	INC CHESSMODEL[5]                           ; 110X,200分
+	INC CHESSMODEL[5]                           ; 110X
 	JMP SC50
 SC531:
-	INC CHESSMODEL[4]                           ; 112X,8分
+	INC CHESSMODEL[4]                           ; 112X
 	JMP SC50
 SC54:
 	CMP DH,CHESSBOARD[BX-4]
 	JE SC541
-	INC CHESSMODEL[7]                           ; 1110,1000分
+	INC CHESSMODEL[7]                           ; 1110
 	JMP SC50
 SC541:
-	INC CHESSMODEL[6]                           ; 1112,100分
+	INC CHESSMODEL[6]                           ; 1112
 SC50: 
    POP BX
    RET											; 子程序结束返回
@@ -893,34 +887,34 @@ SCORE6 PROC NEAR
 SC61:
 	CMP DH,CHESSBOARD[BX-15]
 	JE SC611
-	INC CHESSMODEL[1]                          	; 0XXX,2分  
+	INC CHESSMODEL[1]                          	; 0XXX  
 	JMP SC60
 SC611:
-	INC CHESSMODEL[0]                        	; 2XXX, 3分   
+	INC CHESSMODEL[0]                        	; 2XXX  
 	JMP SC60
 SC62:
    	CMP DH,CHESSBOARD[BX-30]
    	JE SC621
-   	INC CHESSMODEL[3]                         	; 10XX,10分
+   	INC CHESSMODEL[3]                         	; 10XX
 	JMP SC60
 SC621:
-	INC CHESSMODEL[2]                          	; 12XX,5分
+	INC CHESSMODEL[2]                          	; 12XX
 	JMP SC60
 SC63:
 	CMP DH,CHESSBOARD[BX-45]
 	JE SC631
-	INC CHESSMODEL[5]                      		; 110X,200分
+	INC CHESSMODEL[5]                      		; 110X
 	JMP SC60
 SC631:	
-	INC CHESSMODEL[4]                          	; 112X,8分
+	INC CHESSMODEL[4]                          	; 112X
 	JMP SC60
 SC64:	
 	CMP DH,CHESSBOARD[BX-60]
 	JE SC641
-	INC CHESSMODEL[7]                        	; 1110,1000分
+	INC CHESSMODEL[7]                        	; 1110
 	JMP SC60
 SC641:	
-	INC CHESSMODEL[6]                          	; 1112,100分
+	INC CHESSMODEL[6]                          	; 1112
 SC60: 
    POP BX
    RET											; 子程序结束返回
@@ -945,34 +939,34 @@ SCORE7 PROC NEAR
 SC71:
 	CMP DH,CHESSBOARD[BX-16]
 	JE SC711
-	INC CHESSMODEL[1]                          	; 0XXX,2分  
+	INC CHESSMODEL[1]                          	; 0XXX  
 	JMP SC70
 SC711:
-	INC CHESSMODEL[0]                        	; 2XXX, 3分   
+	INC CHESSMODEL[0]                        	; 2XXX  
 	JMP SC70
 SC72:
    	CMP DH,CHESSBOARD[BX-32]
    	JE SC721
-   	INC CHESSMODEL[3]                         	; 10XX,10分
+   	INC CHESSMODEL[3]                         	; 10XX
 	JMP SC70
 SC721:
-	INC CHESSMODEL[2]                          	; 12XX,5分
+	INC CHESSMODEL[2]                          	; 12XX
 	JMP SC70
 SC73:	
 	CMP DH,CHESSBOARD[BX-48]
 	JE SC731
-	INC CHESSMODEL[5]                      		; 110X,200分
+	INC CHESSMODEL[5]                      		; 110X
 	JMP SC70
 SC731:	
-	INC CHESSMODEL[4]                          	; 112X,8分
+	INC CHESSMODEL[4]                          	; 112X
 	JMP SC70
 SC74:
 	CMP DH,CHESSBOARD[BX-64]
 	JE SC741
-	INC CHESSMODEL[7]                        	; 1110,1000分
+	INC CHESSMODEL[7]                        	; 1110
 	JMP SC70
 SC741:
-	INC CHESSMODEL[6]                          	; 1112,100分
+	INC CHESSMODEL[6]                          	; 1112
 SC70: 
    POP BX
    RET											; 子程序结束返回
@@ -997,34 +991,34 @@ SCORE8 PROC NEAR
 SC81:
 	CMP DH,CHESSBOARD[BX+14]
 	JE SC811
-	INC CHESSMODEL[1]                          	; 0XXX,2分  
+	INC CHESSMODEL[1]                          	; 0XXX  
 	JMP SC80
 SC811:
-	INC CHESSMODEL[0]                        	; 2XXX, 3分   
+	INC CHESSMODEL[0]                        	; 2XXX  
 	JMP SC80
 SC82:
    	CMP DH,CHESSBOARD[BX+28]
    	JE SC821
-   	INC CHESSMODEL[3]                         	; 10XX,10分
+   	INC CHESSMODEL[3]                         	; 10XX
 	JMP SC80
 SC821:	
-	INC CHESSMODEL[2]                          	; 12XX,5分
+	INC CHESSMODEL[2]                          	; 12XX
 	JMP SC80
 SC83:	
 	CMP DH,CHESSBOARD[BX+42]
 	JE SC831
-	INC CHESSMODEL[5]                      		; 110X,200分
+	INC CHESSMODEL[5]                      		; 110X
 	JMP SC80
 SC831:
-	INC CHESSMODEL[4]                          	; 112X,8分
+	INC CHESSMODEL[4]                          	; 112X
 	JMP SC80
 SC84:
 	CMP DH,CHESSBOARD[BX+56]
 	JE SC841
-	INC CHESSMODEL[7]                        	; 1110,1000分
+	INC CHESSMODEL[7]                        	; 1110
 	JMP SC80
 SC841:
-	INC CHESSMODEL[6]                          	; 1112,100分
+	INC CHESSMODEL[6]                          	; 1112
 SC80: 
    POP BX
    RET											; 子程序结束返回
@@ -1037,7 +1031,7 @@ ISWIN PROC NEAR
 	PUSH DX										
     MOV X,0										; 初始化X和Y
     MOV Y,0
-	MOV OVER,0   								; 初始化OVER
+	MOV FLAG_OVER,0   							; 初始化FLAG_OVER
 LOOPY:
 	GET_CB_ADDRESS X,Y                          ; 获取点X,Y的地址,放到BX
 	MOV DL,CHESSBOARD[BX]               																	
@@ -1075,7 +1069,7 @@ NEXT:
 	MOV CX,8
 	JMP ENDISWIN
 RETURNISWIN:
-	MOV OVER,1   								; 游戏结束
+	MOV FLAG_OVER,1   							; 游戏结束
 	MOV CX,8                                    
 ENDISWIN:
     MOV BX,CX                             
